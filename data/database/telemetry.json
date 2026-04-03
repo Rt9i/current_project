@@ -1,0 +1,65 @@
+{
+  "updated_at": "2025-12-14T21:30:15.639227Z",
+  "total_events": 600,
+  "avg_fast_ms": 3796.376179333213,
+  "avg_deep_ms": 2.2100379293110093,
+  "avg_vt_ms": 844.5979710008154,
+  "quarantined": 0,
+  "backed_up": 600,
+  "total_bytes": 181258893,
+  "avg_file_size": 302098,
+  "max_file_size": 2785280,
+  "per_extension": {
+    "<noext>": 117,
+    ".bin": 8,
+    ".json": 463,
+    ".tbres": 2,
+    ".html": 1,
+    ".png": 2,
+    ".js": 3,
+    ".customdestinations-ms": 1,
+    ".py": 3
+  },
+  "per_directory_top": [
+    [
+      "C:\\Users\\Admin\\Desktop\\ran5\\current_project\\data\\backups",
+      522
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Profile 15",
+      35
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Profile 15\\Collections",
+      10
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Credentials",
+      4
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\IdentityCache\\1\\UD\\u_QL7H1BQRIL4V7MND\\e_C2GK9UTC67FSUCG3\\Accounts",
+      4
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Profile 15\\Code Cache\\js",
+      4
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Profile 15\\Cache\\Cache_Data",
+      2
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\TokenBroker\\Cache",
+      2
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\IdentityCache\\1\\UD\\u_QL7H1BQRIL4V7MND\\e_C2GK9UTC67FSUCG3\\AT\\r_74DB6FURNR2TGPBK",
+      2
+    ],
+    [
+      "C:\\Users\\Admin\\AppData\\Local\\Microsoft\\Edge\\User Data\\Profile 15\\Extensions\\aapbdbdomjkkjkaonfhkkikfgjllcleb\\2.0.16_0",
+      2
+    ]
+  ]
+}

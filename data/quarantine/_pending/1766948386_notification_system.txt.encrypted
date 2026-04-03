@@ -1,0 +1,365 @@
+#  ransomware_protection_system\src\notification_system.py
+
+import smtplib
+import logging
+import json
+import os
+import subprocess
+import threading
+import time
+from datetime import datetime
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from typing import Dict, List, Optional
+import requests
+
+class NotificationSystem:
+    """نظام التنبيهات والإشعارات المتقدم"""
+    
+    def __init__(self, config_path: str = "config.json"):
+        self.config = self.load_config(config_path)
+        self.setup_logging()
+        self.notification_history = []
+        
+    def load_config(self, config_path: str) -> dict:
+        """تحميل إعدادات النظام"""
+        default_config = {
+            "enable_email_alerts": False,
+            "enable_sms_alerts": False,
+            "enable_sound_alerts": True,
+            "enable_desktop_notifications": True,
+            "email_settings": {
+                "smtp_server": "smtp.gmail.com",
+                "smtp_port": 587,
+                "username": "",
+                "password": "",
+                "recipient": ""
+            },
+            "sms_settings": {
+                "api_key": "",
+                "api_url": "",
+                "phone_number": ""
+            },
+            "sound_settings": {
+                "alert_sound": "alert.wav",
+                "volume": 80
+            }
+        }
+        
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    # دمج الإعدادات الافتراضية مع الإعدادات المحملة
+                    for key, value in default_config.items():
+                        if key not in config:
+                            config[key] = value
+                    return config
+            except Exception as e:
+                logging.error(f"خطأ في تحميل إعدادات التنبيهات: {e}")
+        
+        return default_config
+    
+    def setup_logging(self):
+        """إعداد نظام التسجيل"""
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+    
+    def send_alert(self, alert_type: str, message: str, severity: str = "medium", 
+                   file_path: str = None, threat_details: Dict = None):
+        """إرسال تنبيه شامل"""
+        try:
+            alert_data = {
+                "timestamp": datetime.now().isoformat(),
+                "alert_type": alert_type,
+                "message": message,
+                "severity": severity,
+                "file_path": file_path,
+                "threat_details": threat_details or {}
+            }
+            
+            # حفظ التنبيه في السجل
+            self.notification_history.append(alert_data)
+            logging.warning(f"تنبيه أمني: {alert_type} - {message}")
+            
+            # إرسال التنبيهات حسب الإعدادات
+            if self.config.get("enable_sound_alerts", True):
+                self._play_alert_sound(severity)
+            
+            if self.config.get("enable_desktop_notifications", True):
+                self._show_desktop_notification(alert_type, message, severity)
+            
+            if self.config.get("enable_email_alerts", False):
+                self._send_email_alert(alert_data)
+            
+            if self.config.get("enable_sms_alerts", False):
+                self._send_sms_alert(alert_data)
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"خطأ في إرسال التنبيه: {e}")
+            return False
+    
+    def _play_alert_sound(self, severity: str):
+        """تشغيل صوت التنبيه"""
+        try:
+            # تحديد نوع الصوت حسب مستوى الخطورة
+            if severity == "high":
+                # صوت تنبيه عالي
+                self._generate_beep_sequence([800, 1000, 800], [0.3, 0.3, 0.3])
+            elif severity == "medium":
+                # صوت تنبيه متوسط
+                self._generate_beep_sequence([600, 800], [0.5, 0.5])
+            else:
+                # صوت تنبيه منخفض
+                self._generate_beep_sequence([400], [0.7])
+                
+        except Exception as e:
+            logging.error(f"خطأ في تشغيل صوت التنبيه: {e}")
+    
+    def _generate_beep_sequence(self, frequencies: List[int], durations: List[float]):
+        """توليد تسلسل أصوات التنبيه"""
+        try:
+            # استخدام أوامر النظام لتوليد الأصوات
+            for freq, duration in zip(frequencies, durations):
+                # محاولة استخدام beep إذا كان متاحاً
+                try:
+                    subprocess.run(['beep', '-f', str(freq), '-l', str(int(duration * 1000))], 
+                                 check=False, timeout=2)
+                except:
+                    # إذا لم يكن beep متاحاً، استخدم طريقة بديلة
+                    try:
+                        # استخدام speaker-test أو aplay
+                        subprocess.run(['speaker-test', '-t', 'sine', '-f', str(freq), '-l', '1'], 
+                                     check=False, timeout=2, stdout=subprocess.DEVNULL, 
+                                     stderr=subprocess.DEVNULL)
+                    except:
+                        # طريقة بديلة باستخدام echo
+                        try:
+                            subprocess.run(['echo', '-e', '\\a'], check=False, timeout=1)
+                        except:
+                            pass
+                
+                time.sleep(0.1)  # فترة قصيرة بين الأصوات
+                
+        except Exception as e:
+            logging.error(f"خطأ في توليد أصوات التنبيه: {e}")
+    
+    def _show_desktop_notification(self, title: str, message: str, severity: str):
+        """عرض إشعار على سطح المكتب"""
+        try:
+            # تحديد أيقونة حسب مستوى الخطورة
+            icon = "dialog-error" if severity == "high" else "dialog-warning"
+            
+            # محاولة استخدام notify-send
+            try:
+                subprocess.run([
+                    'notify-send', 
+                    '--urgency=critical' if severity == "high" else '--urgency=normal',
+                    '--icon=' + icon,
+                    f'تنبيه أمني: {title}',
+                    message
+                ], check=False, timeout=5)
+            except:
+                # طريقة بديلة باستخدام zenity
+                try:
+                    subprocess.run([
+                        'zenity', '--warning', 
+                        '--text=' + f'{title}: {message}'
+                    ], check=False, timeout=5)
+                except:
+                    logging.warning("لا يمكن عرض إشعارات سطح المكتب")
+                    
+        except Exception as e:
+            logging.error(f"خطأ في عرض إشعار سطح المكتب: {e}")
+    
+    def _send_email_alert(self, alert_data: Dict):
+        """إرسال تنبيه عبر البريد الإلكتروني"""
+        try:
+            email_config = self.config.get("email_settings", {})
+            
+            if not all([email_config.get("username"), email_config.get("password"), 
+                       email_config.get("recipient")]):
+                logging.warning("إعدادات البريد الإلكتروني غير مكتملة")
+                return False
+            
+            # إنشاء الرسالة
+            msg = MIMEMultipart()
+            msg['From'] = email_config["username"]
+            msg['To'] = email_config["recipient"]
+            msg['Subject'] = f"تنبيه أمني: {alert_data['alert_type']}"
+            
+            # محتوى الرسالة
+            body = f"""
+تم اكتشاف تهديد أمني جديد:
+
+نوع التنبيه: {alert_data['alert_type']}
+مستوى الخطورة: {alert_data['severity']}
+الوقت: {alert_data['timestamp']}
+الرسالة: {alert_data['message']}
+
+تفاصيل إضافية:
+{json.dumps(alert_data['threat_details'], indent=2, ensure_ascii=False)}
+
+يرجى اتخاذ الإجراءات اللازمة فوراً.
+
+نظام الحماية من فيروسات الفدية
+            """
+            
+            msg.attach(MIMEText(body, 'plain', 'utf-8'))
+            
+            # إرسال الرسالة
+            server = smtplib.SMTP(email_config["smtp_server"], email_config["smtp_port"])
+            server.starttls()
+            server.login(email_config["username"], email_config["password"])
+            server.send_message(msg)
+            server.quit()
+            
+            logging.info(f"تم إرسال تنبيه بريد إلكتروني إلى {email_config['recipient']}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"خطأ في إرسال البريد الإلكتروني: {e}")
+            return False
+    
+    def _send_sms_alert(self, alert_data: Dict):
+        """إرسال تنبيه عبر الرسائل النصية"""
+        try:
+            sms_config = self.config.get("sms_settings", {})
+            
+            if not all([sms_config.get("api_key"), sms_config.get("api_url"), 
+                       sms_config.get("phone_number")]):
+                logging.warning("إعدادات الرسائل النصية غير مكتملة")
+                return False
+            
+            # إنشاء نص الرسالة
+            message = f"تنبيه أمني: {alert_data['alert_type']} - {alert_data['message'][:100]}"
+            
+            # إرسال الرسالة (مثال عام - يحتاج تخصيص حسب مزود الخدمة)
+            payload = {
+                "api_key": sms_config["api_key"],
+                "to": sms_config["phone_number"],
+                "message": message
+            }
+            
+            response = requests.post(sms_config["api_url"], json=payload, timeout=10)
+            
+            if response.status_code == 200:
+                logging.info(f"تم إرسال رسالة نصية إلى {sms_config['phone_number']}")
+                return True
+            else:
+                logging.error(f"فشل في إرسال الرسالة النصية: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"خطأ في إرسال الرسالة النصية: {e}")
+            return False
+    
+    def send_ransomware_alert(self, file_path: str, threat_details: Dict):
+        """إرسال تنبيه خاص بفيروسات الفدية"""
+        message = f"تم اكتشاف فيروس فدية محتمل في الملف: {file_path}"
+        
+        return self.send_alert(
+            alert_type="Ransomware Detection",
+            message=message,
+            severity="high",
+            file_path=file_path,
+            threat_details=threat_details
+        )
+    
+    def send_file_encrypted_alert(self, file_path: str, entropy: float):
+        """إرسال تنبيه عند اكتشاف ملف مشفر"""
+        message = f"تم اكتشاف ملف مشفر محتمل: {file_path} (إنتروبيا: {entropy:.2f})"
+        
+        threat_details = {
+            "entropy": entropy,
+            "detection_method": "Entropy Analysis",
+            "recommended_action": "Quarantine and investigate"
+        }
+        
+        return self.send_alert(
+            alert_type="File Encryption Detected",
+            message=message,
+            severity="high",
+            file_path=file_path,
+            threat_details=threat_details
+        )
+    
+    def send_suspicious_activity_alert(self, activity_type: str, details: Dict):
+        """إرسال تنبيه عند اكتشاف نشاط مشبوه"""
+        message = f"تم اكتشاف نشاط مشبوه: {activity_type}"
+        
+        return self.send_alert(
+            alert_type="Suspicious Activity",
+            message=message,
+            severity="medium",
+            threat_details=details
+        )
+    
+    def get_notification_history(self, limit: int = 50) -> List[Dict]:
+        """الحصول على سجل التنبيهات"""
+        return self.notification_history[-limit:]
+    
+    def clear_notification_history(self):
+        """مسح سجل التنبيهات"""
+        self.notification_history.clear()
+        logging.info("تم مسح سجل التنبيهات")
+    
+    def test_notifications(self):
+        """اختبار جميع أنواع التنبيهات"""
+        test_alert = {
+            "alert_type": "System Test",
+            "message": "هذا اختبار لنظام التنبيهات",
+            "severity": "low",
+            "file_path": None,
+            "threat_details": {"test": True}
+        }
+        
+        logging.info("بدء اختبار نظام التنبيهات...")
+        
+        # اختبار الصوت
+        if self.config.get("enable_sound_alerts", True):
+            logging.info("اختبار التنبيه الصوتي...")
+            self._play_alert_sound("medium")
+        
+        # اختبار إشعارات سطح المكتب
+        if self.config.get("enable_desktop_notifications", True):
+            logging.info("اختبار إشعار سطح المكتب...")
+            self._show_desktop_notification("اختبار النظام", "نظام التنبيهات يعمل بشكل صحيح", "low")
+        
+        # اختبار البريد الإلكتروني
+        if self.config.get("enable_email_alerts", False):
+            logging.info("اختبار البريد الإلكتروني...")
+            self._send_email_alert(test_alert)
+        
+        # اختبار الرسائل النصية
+        if self.config.get("enable_sms_alerts", False):
+            logging.info("اختبار الرسائل النصية...")
+            self._send_sms_alert(test_alert)
+        
+        logging.info("انتهى اختبار نظام التنبيهات")
+        return True
+
+
+# مثال على الاستخدام
+if __name__ == "__main__":
+    notification_system = NotificationSystem()
+    
+    # اختبار النظام
+    notification_system.test_notifications()
+    
+    # إرسال تنبيه تجريبي
+    notification_system.send_ransomware_alert(
+        "/path/to/suspicious/file.exe",
+        {
+            "confidence": 0.95,
+            "detection_method": "YARA Rules",
+            "threat_type": "Ransomware"
+        }
+    )
+
+
+.encrypted

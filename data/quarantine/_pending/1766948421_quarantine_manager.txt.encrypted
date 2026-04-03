@@ -1,0 +1,432 @@
+# ransomware_protection_system\src\quarantine_manager.py
+"""
+Quarantine Manager
+إدارة الحجر الصحي (محلي + قاعدة بيانات، مع توافق مع النسخة القديمة).
+"""
+
+import os
+import shutil
+import json
+import logging
+import hashlib
+import sqlite3
+from datetime import datetime
+from typing import Dict, List, Optional
+
+from src.paths import get_quarantine_path
+
+
+def _now_str(fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    return datetime.now().strftime(fmt)
+
+
+class QuarantineManager:
+    """
+    مدير العزل (Quarantine)
+    - يعزل الملفات محلياً داخل مجلد مخصص.
+    - يسجل العمليات بقاعدة بيانات SQLite (جدول quarantined_files).
+    - ينشئ ملف .info بجانب الملف (توافق مع الإصدارات القديمة).
+    - يدعم الاسترجاع إلى المسار الأصلي أو مسار مخصص.
+    - يدعم الحذف النهائي مع خيار المسح الآمن.
+    """
+
+    def __init__(self, config_path: str):
+        self.config_path = config_path
+        self.config = self._load_config()
+
+        # مسار العزل كما في مشروعك (من الإعدادات أو الافتراضي داخل paths.py)
+        self.quarantine_dir = get_quarantine_path(
+            self.config.get("quarantine_settings", {})
+                       .get("local_quarantine", {})
+                       .get("path")
+        )
+        os.makedirs(self.quarantine_dir, exist_ok=True)
+
+        # مسار قاعدة البيانات (إن لم يوجد في الإعدادات نستخدم الافتراضي في جذر المشروع)
+        self.db_path = os.path.abspath(
+            self.config.get("database_path", "ransomware_db.sqlite")
+        )
+        self._init_db()
+
+    # ---------------- إعدادات ----------------
+
+    def _load_config(self) -> dict:
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"خطأ في تحميل الإعدادات: {e}")
+            return {}
+
+    def _save_config(self):
+        try:
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"خطأ في حفظ الإعدادات: {e}")
+
+    # ---------------- قاعدة البيانات ----------------
+
+    def _init_db(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS quarantined_files (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_path TEXT,
+                    original_name TEXT,
+                    quarantine_path TEXT,
+                    sha256 TEXT UNIQUE,
+                    size INTEGER,
+                    date_added TEXT,
+                    threat_type TEXT,
+                    confidence REAL,
+                    notes TEXT
+                )
+                """
+            )
+            conn.commit()
+        except Exception as e:
+            logging.error(f"خطأ في تهيئة قاعدة البيانات: {e}")
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _db_exec(self, query: str, params: tuple = (), fetch: bool = False):
+        conn = sqlite3.connect(self.db_path)
+        try:
+            cur = conn.cursor()
+            cur.execute(query, params)
+            if fetch:
+                rows = cur.fetchall()
+                conn.commit()
+                return rows
+            conn.commit()
+        except Exception as e:
+            logging.error(f"SQLite error: {e} | Query: {query} | Params: {params}")
+        finally:
+            conn.close()
+
+    # ---------------- أدوات ----------------
+
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """حساب SHA-256 لملف."""
+        try:
+            sha256_hash = hashlib.sha256()
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    sha256_hash.update(chunk)
+            return sha256_hash.hexdigest()
+        except Exception as e:
+            logging.error(f"❌ خطأ في حساب SHA-256 للملف {file_path}: {e}")
+            return ""
+
+    def _write_info_file(self, quarantine_path: str, payload: Dict):
+        """إنشاء ملف .info بجانب الملف المعزول (توافق خلفي)."""
+        try:
+            info_file = quarantine_path + ".info"
+            with open(info_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.warning(f"⚠️ تعذر كتابة ملف المعلومات {quarantine_path}.info: {e}")
+
+    # ---------------- عزل ملف ----------------
+
+    def quarantine_file(self, file_path: str, threat_details: Dict) -> Dict:
+        """
+        عزل الملف محلياً مع تسجيله في قاعدة البيانات وكتابة .info
+        :return: dict {success: bool, path: str, error: str}
+        """
+        result = {"success": False, "path": "", "error": ""}
+
+        try:
+            if not self.quarantine_dir:
+                result["error"] = "لا يوجد مسار عزل محدد"
+                return result
+
+            if not os.path.exists(file_path):
+                result["error"] = "الملف غير موجود"
+                return result
+
+            original_name = os.path.basename(file_path)
+            sha256 = self._calculate_file_hash(file_path)
+            if not sha256:
+                result["error"] = "تعذر حساب بصمة الملف"
+                return result
+
+            timestamp_short = datetime.now().strftime("%Y%m%d_%H%M%S")
+            quarantine_filename = f"{timestamp_short}_{sha256[:8]}_{original_name}.quarantined"
+            quarantine_path = os.path.join(self.quarantine_dir, quarantine_filename)
+
+            # نقل الملف إلى العزل
+            shutil.move(file_path, quarantine_path)
+            size = os.path.getsize(quarantine_path)
+
+            # إعداد بيانات info + DB
+            info_payload = {
+                "original_path": file_path,
+                "original_name": original_name,
+                "quarantine_path": quarantine_path,
+                "quarantine_time": datetime.now().isoformat(),
+                "file_size": size,
+                "file_hash": sha256,
+                "threat_details": threat_details or {},
+            }
+            self._write_info_file(quarantine_path, info_payload)
+
+            # إدخال/تحديث في DB
+            self._db_exec(
+                """
+                INSERT OR REPLACE INTO quarantined_files
+                (original_path, original_name, quarantine_path, sha256, size, date_added, threat_type, confidence, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    file_path,
+                    original_name,
+                    quarantine_path,
+                    sha256,
+                    size,
+                    _now_str(),
+                    (threat_details or {}).get("threat_type", "unknown"),
+                    float((threat_details or {}).get("confidence", 0.0)),
+                    json.dumps((threat_details or {}).get("features", {}), ensure_ascii=False),
+                ),
+            )
+
+            result["success"] = True
+            result["path"] = quarantine_path
+            logging.info(f"✅ تم عزل الملف: {file_path} -> {quarantine_path}")
+            return result
+
+        except Exception as e:
+            logging.error(f"❌ خطأ في العزل المحلي: {e}")
+            result["error"] = str(e)
+            return result
+
+    # ---------------- عرض/قوائم ----------------
+
+    def list_quarantined_files(self) -> List[Dict]:
+        """إرجاع قائمة الملفات المعزولة من قاعدة البيانات. يسقط إلى القراءة من الملفات عند الحاجة."""
+        try:
+            rows = self._db_exec(
+                "SELECT original_path, original_name, quarantine_path, sha256, size, date_added, threat_type, confidence "
+                "FROM quarantined_files ORDER BY date_added DESC",
+                fetch=True,
+            )
+            if rows:
+                return [
+                    {
+                        "original_path": r[0],
+                        "original_name": r[1],
+                        "quarantine_path": r[2],
+                        "sha256": r[3],
+                        "size": r[4],
+                        "date_added": r[5],
+                        "threat_type": r[6],
+                        "confidence": r[7],
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logging.warning(f"⚠️ تعذر القراءة من قاعدة البيانات، سيتم القراءة من ملفات العزل مباشرة: {e}")
+
+        # ـFallback: قراءة من ملفات .quarantined + .info
+        files = []
+        try:
+            if os.path.exists(self.quarantine_dir):
+                for file in os.listdir(self.quarantine_dir):
+                    if file.endswith(".quarantined"):
+                        qp = os.path.join(self.quarantine_dir, file)
+                        info_path = qp + ".info"
+                        record = {
+                            "original_path": "",
+                            "original_name": "",
+                            "quarantine_path": qp,
+                            "sha256": "",
+                            "size": os.path.getsize(qp) if os.path.exists(qp) else 0,
+                            "date_added": "",
+                            "threat_type": "",
+                            "confidence": 0.0,
+                        }
+                        if os.path.exists(info_path):
+                            try:
+                                with open(info_path, "r", encoding="utf-8") as f:
+                                    meta = json.load(f)
+                                record.update(
+                                    {
+                                        "original_path": meta.get("original_path", ""),
+                                        "original_name": meta.get("original_name", ""),
+                                        "sha256": meta.get("file_hash", ""),
+                                        "date_added": meta.get("quarantine_time", ""),
+                                        "threat_type": (meta.get("threat_details") or {}).get("threat_type", ""),
+                                        "confidence": float((meta.get("threat_details") or {}).get("confidence", 0.0)),
+                                    }
+                                )
+                            except Exception as e:
+                                logging.warning(f"⚠️ تعذر قراءة info لملف {file}: {e}")
+                        files.append(record)
+        except Exception as e:
+            logging.error(f"❌ خطأ في قراءة الملفات المعزولة: {e}")
+
+        return files
+
+    # ---------------- استرجاع ----------------
+
+    def restore_file(self, quarantine_filename: str, restore_dir: str) -> bool:
+        """
+        (توافق مع النسخة القديمة) استعادة ملف معزول إلى مجلد الاستعادة المحدد.
+        """
+        try:
+            quarantine_path = os.path.join(self.quarantine_dir, quarantine_filename)
+            if not os.path.exists(quarantine_path):
+                logging.error(f"❌ الملف المعزول غير موجود: {quarantine_filename}")
+                return False
+
+            os.makedirs(restore_dir, exist_ok=True)
+            dest_path = os.path.join(restore_dir, quarantine_filename)
+            shutil.move(quarantine_path, dest_path)
+            logging.info(f"✅ تم استعادة الملف: {quarantine_filename} -> {dest_path}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ خطأ في استعادة الملف {quarantine_filename}: {e}")
+            return False
+
+    def restore_auto(self, quarantine_filename: str) -> bool:
+        """
+        استعادة تلقائية إلى المسار الأصلي (من ملف .info أو من قاعدة البيانات).
+        """
+        try:
+            qp = os.path.join(self.quarantine_dir, quarantine_filename)
+            if not os.path.exists(qp):
+                logging.error(f"❌ الملف المعزول غير موجود: {quarantine_filename}")
+                return False
+
+            info_path = qp + ".info"
+            original_path = None
+
+            if os.path.exists(info_path):
+                try:
+                    with open(info_path, "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    original_path = meta.get("original_path")
+                except Exception as e:
+                    logging.warning(f"⚠️ تعذر قراءة ملف info للاسترجاع: {e}")
+
+            if not original_path:
+                # محاولة عبر DB من خلال sha الموجود في اسم الملف
+                sha_hint = quarantine_filename.split("_")[1] if "_" in quarantine_filename else ""
+                if len(sha_hint) >= 8:
+                    rows = self._db_exec(
+                        "SELECT original_path FROM quarantined_files WHERE sha256 LIKE ?",
+                        (f"{sha_hint}%",),
+                        fetch=True,
+                    )
+                    if rows and rows[0] and rows[0][0]:
+                        original_path = rows[0][0]
+
+            if not original_path:
+                logging.error("❌ لا يمكن تحديد المسار الأصلي للاسترجاع")
+                return False
+
+            os.makedirs(os.path.dirname(original_path), exist_ok=True)
+            shutil.move(qp, original_path)
+            logging.info(f"✅ تم الاسترجاع إلى المسار الأصلي: {original_path}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ خطأ في الاسترجاع التلقائي: {e}")
+            return False
+
+    def restore_by_sha256(self, sha256: str, restore_dir: Optional[str] = None) -> bool:
+        """
+        استرجاع ملف من العزل عبر SHA-256
+        - إذا لم يُحدَّد restore_dir، يتم الاسترجاع إلى المسار الأصلي.
+        """
+        try:
+            rows = self._db_exec(
+                "SELECT original_path, quarantine_path FROM quarantined_files WHERE sha256=?",
+                (sha256,),
+                fetch=True,
+            )
+            if not rows:
+                logging.warning(f"⚠️ لم يُعثر على سجل العزل للبصمة: {sha256}")
+                return False
+
+            original_path, quarantine_path = rows[0]
+            if not os.path.exists(quarantine_path):
+                logging.error(f"❌ ملف العزل غير موجود: {quarantine_path}")
+                return False
+
+            target = (
+                os.path.join(restore_dir, os.path.basename(quarantine_path))
+                if restore_dir
+                else original_path
+            )
+            if restore_dir:
+                os.makedirs(restore_dir, exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(original_path), exist_ok=True)
+
+            shutil.move(quarantine_path, target)
+            logging.info(f"✅ تم استرجاع الملف: {target}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ خطأ في الاسترجاع عبر SHA-256: {e}")
+            return False
+
+    # ---------------- حذف نهائي ----------------
+
+    def delete_quarantined_file(self, quarantine_filename: str, secure: bool = False) -> bool:
+        """
+        حذف ملف معزول نهائياً.
+        :param secure: إذا True سيتم الكتابة فوق الملف قبل الحذف (مسح آمن بسيط).
+        """
+        try:
+            quarantine_path = os.path.join(self.quarantine_dir, quarantine_filename)
+            if not os.path.exists(quarantine_path):
+                logging.warning(f"⚠️ الملف غير موجود في العزل: {quarantine_filename}")
+                return False
+
+            if secure:
+                try:
+                    size = os.path.getsize(quarantine_path)
+                    with open(quarantine_path, "r+b") as f:
+                        f.write(b"\x00" * size)
+                        f.flush()
+                        os.fsync(f.fileno())
+                except Exception as e:
+                    logging.warning(f"⚠️ تعذر المسح الآمن، سيتم الحذف العادي: {e}")
+
+            os.remove(quarantine_path)
+
+            # حذف ملف .info إن وُجد
+            info_path = quarantine_path + ".info"
+            if os.path.exists(info_path):
+                try:
+                    os.remove(info_path)
+                except Exception:
+                    pass
+
+            # تنظيف السجل من DB (إن أمكن)
+            # نستخرج sha من اسم الملف (الجزء الثاني بعد أول "_")
+            try:
+                sha_hint = quarantine_filename.split("_")[1] if "_" in quarantine_filename else ""
+                if len(sha_hint) >= 8:
+                    self._db_exec(
+                        "DELETE FROM quarantined_files WHERE sha256 LIKE ?",
+                        (f"{sha_hint}%",),
+                    )
+            except Exception:
+                pass
+
+            logging.info(f"🗑️ تم حذف الملف نهائياً: {quarantine_filename}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ خطأ في حذف الملف {quarantine_filename}: {e}")
+            return False
+
+.encrypted

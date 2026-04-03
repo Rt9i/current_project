@@ -1,0 +1,445 @@
+#  ransomware_protection_system\src\ember_ai_model.py
+
+import os
+import logging
+import requests
+import hashlib
+import time
+import json
+import tempfile
+import subprocess
+import joblib
+from src.xgboost_detector import XGBoostMalwareDetector
+
+class VirusTotalAPI:
+    """واجهة برمجة تطبيقات VirusTotal لكشف البرمجيات الخبيثة"""
+    
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key
+        self.base_url = "https://www.virustotal.com/vtapi/v2"
+        self.is_available = api_key is not None
+        
+        if not self.is_available:
+            logging.warning("مفتاح VirusTotal API غير متوفر - سيتم استخدام وضع المحاكاة")
+    
+    def scan_file(self, file_path: str) -> tuple:
+        """فحص الملف باستخدام VirusTotal"""
+        if not self.is_available:
+            return self._simulate_scan(file_path)
+        
+        try:
+            # حساب hash للملف
+            file_hash = self._calculate_file_hash(file_path)
+            
+            # البحث عن تقرير موجود
+            report = self._get_report(file_hash)
+            
+            if report:
+                return self._parse_report(report)
+            else:
+                # رفع الملف للفحص
+                return self._upload_and_scan(file_path)
+                
+        except Exception as e:
+            logging.error(f"خطأ في فحص VirusTotal: {e}")
+            return "Safe", 0.0
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """حساب SHA256 للملف"""
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(chunk)
+        return sha256_hash.hexdigest()
+    
+    def _get_report(self, file_hash: str) -> dict:
+        """الحصول على تقرير من VirusTotal"""
+        try:
+            params = {
+                'apikey': self.api_key,
+                'resource': file_hash
+            }
+            
+            response = requests.get(f"{self.base_url}/file/report", params=params, timeout=30)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logging.warning(f"خطأ في الحصول على تقرير VirusTotal: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logging.error(f"خطأ في طلب تقرير VirusTotal: {e}")
+            return None
+    
+    def _upload_and_scan(self, file_path: str) -> tuple:
+        """رفع الملف وفحصه"""
+        try:
+            # رفع الملف
+            with open(file_path, 'rb') as f:
+                files = {'file': f}
+                params = {'apikey': self.api_key}
+                
+                response = requests.post(
+                    f"{self.base_url}/file/scan", 
+                    files=files, 
+                    params=params, 
+                    timeout=60
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                scan_id = result.get('scan_id')
+                
+                if scan_id:
+                    # انتظار النتائج
+                    time.sleep(15)  # انتظار 15 ثانية
+                    
+                    # الحصول على التقرير
+                    report = self._get_report(scan_id)
+                    if report:
+                        return self._parse_report(report)
+            
+            return "Safe", 0.0
+            
+        except Exception as e:
+            logging.error(f"خطأ في رفع الملف إلى VirusTotal: {e}")
+            return "Safe", 0.0
+    
+    def _simulate_scan(self, file_path: str) -> tuple:
+        """محاكاة فحص VirusTotal"""
+        try:
+            # فحص بسيط بناءً على اسم الملف والحجم
+            filename = os.path.basename(file_path).lower()
+            file_size = os.path.getsize(file_path)
+            
+            # كلمات مفتاحية مشبوهة
+            suspicious_keywords = [
+                'ransomware', 'encrypt', 'decrypt', 'crypto', 'ransom',
+                'locked', 'virus', 'malware', 'trojan', 'hack'
+            ]
+            
+            suspicion_score = 0
+            
+            # فحص اسم الملف
+            for keyword in suspicious_keywords:
+                if keyword in filename:
+                    suspicion_score += 0.3
+            
+            # فحص الامتداد
+            suspicious_extensions = ['.exe', '.scr', '.bat', '.cmd', '.pif']
+            if any(filename.endswith(ext) for ext in suspicious_extensions):
+                suspicion_score += 0.2
+            
+            # فحص الحجم (الملفات الصغيرة جداً أو الكبيرة جداً قد تكون مشبوهة)
+            if file_size < 1024 or file_size > 100 * 1024 * 1024:  # أقل من 1KB أو أكبر من 100MB
+                suspicion_score += 0.1
+            
+            # تحديد النتيجة
+            if suspicion_score > 0.5:
+                return "Suspicious", min(suspicion_score, 1.0)
+            else:
+                return "Safe", max(0.1, 1.0 - suspicion_score)
+                
+        except Exception as e:
+            logging.error(f"خطأ في محاكاة فحص VirusTotal: {e}")
+            return "Safe", 0.0
+    
+    def _parse_report(self, report: dict) -> tuple:
+        """تحليل تقرير VirusTotal"""
+        try:
+            positives = report.get('positives', 0)
+            total = report.get('total', 1)
+            
+            if total == 0:
+                return "Safe", 0.0
+            
+            detection_ratio = positives / total
+            
+            if detection_ratio > 0.3:  # أكثر من 30% من المحركات تكتشف تهديد
+                status = "Infected"
+                confidence = min(detection_ratio * 2, 1.0)
+            elif detection_ratio > 0.1:  # بين 10% و 30%
+                status = "Suspicious"
+                confidence = detection_ratio
+            else:
+                status = "Safe"
+                confidence = 1.0 - detection_ratio
+            
+            return status, confidence
+            
+        except Exception as e:
+            logging.error(f"خطأ في تحليل تقرير VirusTotal: {e}")
+            return "Safe", 0.0
+
+
+class YARADetector:
+    """كاشف YARA للبرمجيات الخبيثة"""
+    
+    def __init__(self):
+        self.rules_loaded = False
+        self.yara_available = self._check_yara_availability()
+        
+        if self.yara_available:
+            self._load_default_rules()
+    
+    def _check_yara_availability(self) -> bool:
+        """التحقق من توفر YARA"""
+        try:
+            import yara
+            return True
+        except ImportError:
+            logging.warning("YARA غير متوفر - سيتم استخدام قواعد بديلة")
+            return False
+    
+    def _load_default_rules(self):
+        """تحميل قواعد YARA الافتراضية"""
+        try:
+            # قواعد YARA بسيطة لكشف فيروسات الفدية
+            ransomware_rules = '''
+            rule Ransomware_Python_Strings {
+                strings:
+                    $s1 = "import os" nocase
+                    $s2 = "import cryptography" nocase
+                    $s3 = "from cryptography.fernet import Fernet" nocase
+                    $s4 = "os.walk" nocase
+                    $s5 = "os.remove" nocase
+                    $s6 = "os.rename" nocase
+                    $s7 = "encrypt_file" nocase
+                    $s8 = "decrypt_file" nocase
+                    $s9 = "generate_key" nocase
+                    $s10 = "key.key" nocase
+                    $s11 = "README.txt" nocase
+                    $s12 = "your files have been encrypted" nocase
+                    $s13 = "pay bitcoin" nocase
+                    $s14 = "bitcoin address" nocase
+                    $s15 = ".locked" nocase
+                    $s16 = ".encrypted" nocase
+                    $s17 = ".crypto" nocase
+                    $s18 = "ransomware" nocase
+                    $s19 = "shutil.move" nocase
+                    $s20 = "shutil.copy" nocase
+
+                condition:
+                    3 of them
+            }
+            '''
+            
+            if self.yara_available:
+                import yara
+                self.rules = yara.compile(source=ransomware_rules)
+                self.rules_loaded = True
+                logging.info("تم تحميل قواعد YARA بنجاح")
+            else:
+                self.rules_loaded = False
+                
+        except Exception as e:
+            logging.error(f"خطأ في تحميل قواعد YARA: {e}")
+            self.rules_loaded = False
+    
+    def scan_file(self, file_path: str) -> tuple:
+        """فحص الملف باستخدام YARA"""
+        if not self.yara_available or not self.rules_loaded:
+            return self._simple_scan(file_path)
+        
+        try:
+            import yara
+            matches = self.rules.match(file_path)
+            
+            if matches:
+                confidence = min(len(matches) * 0.3, 1.0)
+                logging.warning(f"YARA اكتشف تطابقات في {file_path}: {[m.rule for m in matches]}")
+                return "Infected", confidence
+            else:
+                return "Safe", 0.1
+                
+        except Exception as e:
+            logging.error(f"خطأ في فحص YARA: {e}")
+            return self._simple_scan(file_path)
+    
+    def _simple_scan(self, file_path: str) -> tuple:
+        """فحص بسيط بدون YARA"""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(10000)  # قراءة أول 10KB
+            
+            # كلمات مفتاحية مشبوهة
+            suspicious_patterns = [
+                'cryptography', 'fernet', 'encrypt', 'decrypt', 'ransom',
+                'bitcoin', 'your files have been encrypted', 'pay bitcoin',
+                'os.walk', 'os.remove', 'shutil.move'
+            ]
+            
+            matches = 0
+            for pattern in suspicious_patterns:
+                if pattern.lower() in content.lower():
+                    matches += 1
+                
+                if matches > 0:
+                    confidence = min(matches * 0.2, 1.0)
+                    return "Infected", confidence
+                else:
+                    return "Safe", 0.1
+                    
+        except Exception as e:
+            logging.error(f"خطأ في الفحص البسيط: {e}")
+            return "Safe", 0.0
+
+
+class HybridMalwareDetector:
+    """كاشف هجين للبرمجيات الخبيثة يجمع بين عدة تقنيات (بدون EMBER)"""
+    
+    def __init__(self, virustotal_api_key: str = None):
+        self.virustotal = VirusTotalAPI(virustotal_api_key) if virustotal_api_key else None
+        self.yara_detector = YARADetector()
+        self.xgboost_detector = XGBoostMalwareDetector()
+        
+        logging.info("تم تهيئة الكاشف الهجين للبرمجيات الخبيثة (بدون EMBER)")
+    
+    def predict(self, file_path: str) -> tuple:
+        """التنبؤ بحالة الملف باستخدام عدة تقنيات"""
+        try:
+            if not os.path.exists(file_path):
+                return "Safe", 0.0
+            
+            # فحص باستخدام YARA
+            yara_status, yara_confidence = self.yara_detector.scan_file(file_path)
+            
+            # فحص باستخدام VirusTotal (إذا كان متاحاً)
+            vt_status, vt_confidence = "Safe", 0.0
+            if self.virustotal:
+                vt_status, vt_confidence = self.virustotal.scan_file(file_path)
+            
+            # فحص باستخدام XGBoost
+            xgboost_status, xgboost_confidence = self.xgboost_detector.predict(file_path)
+            
+            # دمج النتائج
+            final_status, final_confidence = self._combine_results(
+                (yara_status, yara_confidence),
+                (vt_status, vt_confidence),
+                (xgboost_status, xgboost_confidence)
+            )
+            
+            logging.info(f"نتيجة الفحص للملف {file_path}: {final_status} (ثقة: {final_confidence:.2f})")
+            
+            return final_status, final_confidence
+            
+        except Exception as e:
+            logging.error(f"خطأ في فحص الملف {file_path}: {e}")
+            return "Safe", 0.0
+    
+    def _combine_results(self, yara_result: tuple, vt_result: tuple, xgboost_result: tuple) -> tuple:
+        """دمج نتائج الفحص من مصادر متعددة"""
+        yara_status, yara_conf = yara_result
+        vt_status, vt_conf = vt_result
+        xgboost_status, xgboost_conf = xgboost_result
+        
+        # قائمة بالحالات والثقة
+        results = [
+            (yara_status, yara_conf),
+            (vt_status, vt_conf),
+            (xgboost_status, xgboost_conf)
+        ]
+
+        # تحديد ما إذا كان أي كاشف قد صنف الملف على أنه 'Infected'
+        infected_results = [res for res in results if res[0] == "Infected"]
+        suspicious_results = [res for res in results if res[0] == "Suspicious"]
+        
+        if infected_results:
+            # إذا كان هناك أي اكتشاف لـ 'Infected'، نأخذ أعلى ثقة
+            max_confidence = max(res[1] for res in infected_results)
+            return "Infected", max_confidence
+        elif suspicious_results:
+            # إذا كان هناك اكتشاف مشبوه، نأخذ متوسط الثقة
+            avg_confidence = sum(res[1] for res in suspicious_results) / len(suspicious_results)
+            return "Suspicious", avg_confidence
+        else:
+            # جميع النتائج آمنة
+            avg_confidence = sum(res[1] for res in results) / len(results)
+            return "Safe", avg_confidence
+    
+    def analyze_file(self, file_path: str) -> dict:
+        """تحليل مفصل للملف"""
+        try:
+            start_time = time.time()
+            
+            # الحصول على معلومات الملف
+            file_info = {
+                'file_path': file_path,
+                'file_size': os.path.getsize(file_path) if os.path.exists(file_path) else 0,
+                'file_hash': self._calculate_file_hash(file_path) if os.path.exists(file_path) else '',
+                'analysis_time': 0.0
+            }
+            
+            # فحص باستخدام كل كاشف
+            yara_status, yara_conf = self.yara_detector.scan_file(file_path)
+            
+            vt_status, vt_conf = "Safe", 0.0
+            if self.virustotal:
+                vt_status, vt_conf = self.virustotal.scan_file(file_path)
+            
+            xgboost_status, xgboost_conf = self.xgboost_detector.predict(file_path)
+            
+            # دمج النتائج
+            final_status, final_confidence = self._combine_results(
+                (yara_status, yara_conf),
+                (vt_status, vt_conf),
+                (xgboost_status, xgboost_conf)
+            )
+            
+            # إنشاء التحليل المفصل
+            analysis = {
+                **file_info,
+                'final_status': final_status,
+                'final_confidence': final_confidence,
+                'is_malware': final_status in ['Infected', 'Suspicious'],
+                'confidence': final_confidence,
+                'threat_type': 'Ransomware' if final_status == 'Infected' else 'Safe',
+                'analysis_time': time.time() - start_time,
+                'detectors': {
+                    'yara': {'status': yara_status, 'confidence': yara_conf},
+                    'virustotal': {'status': vt_status, 'confidence': vt_conf},
+                    'xgboost': {'status': xgboost_status, 'confidence': xgboost_conf}
+                }
+            }
+            
+            return analysis
+            
+        except Exception as e:
+            logging.error(f"خطأ في تحليل الملف {file_path}: {e}")
+            return {
+                'file_path': file_path,
+                'final_status': 'Error',
+                'final_confidence': 0.0,
+                'error': str(e)
+            }
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """حساب SHA256 للملف"""
+        try:
+            sha256_hash = hashlib.sha256()
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(chunk)
+            return sha256_hash.hexdigest()
+        except Exception as e:
+            logging.error(f"خطأ في حساب hash الملف: {e}")
+            return ""
+    
+    def get_model_info(self) -> dict:
+        """الحصول على معلومات النماذج"""
+        return {
+            "status": "loaded",
+            "model_type": "Hybrid Malware Detector",
+            "components": {
+                "yara_detector": self.yara_detector.rules_loaded,
+                "virustotal_api": self.virustotal is not None and self.virustotal.is_available,
+                "ember_detector": False,  # تم إزالة EMBER
+                "xgboost_detector": True,
+                "rules_loaded": self.yara_detector.rules_loaded
+            },
+            "description": "Hybrid detector combining YARA, VirusTotal API, and XGBoost (EMBER removed)"
+        }
+
+
+.encrypted

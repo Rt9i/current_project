@@ -1,0 +1,78 @@
+{
+  "test_time": "2025-11-28T03:29:31.139676",
+  "total_tests": 10,
+  "passed": 8,
+  "failed": 2,
+  "results": [
+    {
+      "test": "Health API",
+      "success": true,
+      "details": "Status: {'anomaly': True, 'ml': False, 'paused': False, 'quarantine': True, 'running': False, 'yara': True}",
+      "response_time_ms": 2.52,
+      "timestamp": "2025-11-28T03:29:23.614920"
+    },
+    {
+      "test": "Stats API",
+      "success": true,
+      "details": "Scans: 0, Quarantined: 0",
+      "response_time_ms": 1.67,
+      "timestamp": "2025-11-28T03:29:24.116781"
+    },
+    {
+      "test": "Quarantine List API",
+      "success": true,
+      "details": "Items: 1",
+      "response_time_ms": 1.37,
+      "timestamp": "2025-11-28T03:29:24.618291"
+    },
+    {
+      "test": "Backup Status API",
+      "success": false,
+      "details": "HTTP 503",
+      "response_time_ms": 1.52,
+      "timestamp": "2025-11-28T03:29:25.119940"
+    },
+    {
+      "test": "Monitoring List Paths",
+      "success": false,
+      "details": "API returned success=false",
+      "response_time_ms": 1.59,
+      "timestamp": "2025-11-28T03:29:25.621673"
+    },
+    {
+      "test": "Web Interface",
+      "success": true,
+      "details": "Main page loads correctly",
+      "response_time_ms": 5.94,
+      "timestamp": "2025-11-28T03:29:26.127767"
+    },
+    {
+      "test": "Control START API",
+      "success": true,
+      "details": "Success",
+      "response_time_ms": 1.98,
+      "timestamp": "2025-11-28T03:29:26.629906"
+    },
+    {
+      "test": "Control STOP API",
+      "success": true,
+      "details": "Success",
+      "response_time_ms": 1.86,
+      "timestamp": "2025-11-28T03:29:27.631872"
+    },
+    {
+      "test": "Control PAUSE API",
+      "success": true,
+      "details": "Success",
+      "response_time_ms": 1.74,
+      "timestamp": "2025-11-28T03:29:28.633723"
+    },
+    {
+      "test": "Control RESUME API",
+      "success": true,
+      "details": "Success",
+      "response_time_ms": 1.64,
+      "timestamp": "2025-11-28T03:29:29.635473"
+    }
+  ]
+}

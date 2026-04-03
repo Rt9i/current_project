@@ -1,0 +1,2732 @@
+#  script.js
+
+// Global Variables
+let systemStatus = 'offline';
+let protectionActive = false;
+let currentPage = 'dashboard';
+let charts = {};
+let updateInterval = null;
+
+// API Base URL
+const API_BASE = '/api/ransomware';
+
+// Initialize Application
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+    setupEventListeners();
+    loadInitialData();
+    startPeriodicUpdates();
+});
+
+// Initialize Application
+function initializeApp() {
+    console.log('Initializing Ransomware Protection System...');
+    
+    // Initialize charts
+    initializeCharts();
+    
+    // Check system status
+    checkSystemStatus();
+    
+    // Load AI model info
+    loadAIModelInfo();
+    
+    showToast('System initialized successfully', 'success');
+}
+
+    // Setup Event Listeners
+function setupEventListeners() {
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const page = this.dataset.page;
+            if (page) {
+                navigateToPage(page);
+            }
+        });
+    });
+    
+    // Protection Controls
+    const startBtn = document.getElementById('startProtection');
+    const pauseBtn = document.getElementById('pauseProtection');
+    const stopBtn = document.getElementById('stopProtection');
+    
+    if (startBtn) {
+        startBtn.addEventListener('click', startProtection);
+    }
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', pauseProtection);
+    }
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopProtection);
+    }
+    
+    // File Analysis
+    const analyzeBtn = document.getElementById('analyzeFile');
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', analyzeFile);
+    }
+    
+    // Browse File to Analyze
+    const browseFileBtn = document.getElementById('browseFileToAnalyze');
+    if (browseFileBtn) {
+        browseFileBtn.addEventListener('click', browseFileToAnalyze);
+    }
+    
+    // Test Alert
+    const testAlertBtn = document.getElementById('testAlert');
+    if (testAlertBtn) {
+        testAlertBtn.addEventListener('click', sendTestAlert);
+    }
+    
+    // AI Model Controls
+    const reloadAIBtn = document.getElementById('reloadAI');
+    if (reloadAIBtn) {
+        reloadAIBtn.addEventListener('click', reloadAIModel);
+    }
+    
+    // Settings
+    const saveSettingsBtn = document.getElementById('saveSettings');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', saveSettings);
+    }
+    
+    // Backup Controls
+    const openBackupFolderBtn = document.getElementById('openBackupFolder');
+    if (openBackupFolderBtn) {
+        openBackupFolderBtn.addEventListener('click', openBackupFolder);
+    }
+    
+    const openGoogleDriveBtn = document.getElementById('openGoogleDrive');
+    if (openGoogleDriveBtn) {
+        openGoogleDriveBtn.addEventListener('click', openGoogleDriveBackups);
+    }
+    
+    const authenticateGoogleDriveBtn = document.getElementById('authenticateGoogleDrive');
+    if (authenticateGoogleDriveBtn) {
+        authenticateGoogleDriveBtn.addEventListener('click', authenticateGoogleDrive);
+    }
+    
+    const backupToGoogleDriveBtn = document.getElementById('backupToGoogleDrive');
+    if (backupToGoogleDriveBtn) {
+        backupToGoogleDriveBtn.addEventListener('click', function() {
+            // يمكن تخصيص المسار هنا أو السؤال عن المسار
+            const folderPath = prompt('أدخل مسار المجلد للنسخ الاحتياطي:', 'C:/Users');
+            if (folderPath) {
+                backupFolderToGoogleDrive(folderPath);
+            }
+        });
+    }
+    
+    const cleanupBackupsBtn = document.getElementById('cleanupBackups');
+    if (cleanupBackupsBtn) {
+        cleanupBackupsBtn.addEventListener('click', cleanupBackups);
+    }
+    
+    // Recovery Strategy Cards
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.addEventListener('click', function() {
+            selectRecoveryStrategy(this.dataset.strategy);
+        });
+    });
+    
+    // Recovery Controls
+    const connectGoogleDriveBtn = document.getElementById('connectGoogleDrive');
+    if (connectGoogleDriveBtn) {
+        connectGoogleDriveBtn.addEventListener('click', connectGoogleDrive);
+    }
+    
+    const disconnectGoogleDriveBtn = document.getElementById('disconnectGoogleDrive');
+    if (disconnectGoogleDriveBtn) {
+        disconnectGoogleDriveBtn.addEventListener('click', disconnectGoogleDrive);
+    }
+    
+    const refreshQuarantineBtn = document.getElementById('refreshQuarantine');
+    if (refreshQuarantineBtn) {
+        refreshQuarantineBtn.addEventListener('click', refreshQuarantineList);
+    }
+    
+    const openLocalQuarantineBtn = document.getElementById('openLocalQuarantine');
+    if (openLocalQuarantineBtn) {
+        openLocalQuarantineBtn.addEventListener('click', openLocalQuarantine);
+    }
+    
+    const browseQuarantinePathBtn = document.getElementById('browseQuarantinePath');
+    if (browseQuarantinePathBtn) {
+        browseQuarantinePathBtn.addEventListener('click', browseQuarantinePath);
+    }
+    
+    const addQuarantinePathBtn = document.getElementById('addQuarantinePath');
+    if (addQuarantinePathBtn) {
+        addQuarantinePathBtn.addEventListener('click', addQuarantinePath);
+    }
+    
+    // Local Storage Path Controls
+    const browseLocalStoragePathBtn = document.getElementById('browseLocalStoragePath');
+    if (browseLocalStoragePathBtn) {
+        browseLocalStoragePathBtn.addEventListener('click', browseLocalStoragePath);
+    }
+    
+    const addLocalStoragePathBtn = document.getElementById('addLocalStoragePath');
+    if (addLocalStoragePathBtn) {
+        addLocalStoragePathBtn.addEventListener('click', addLocalStoragePath);
+    }
+    
+    // File input enter key
+    const filePathInput = document.getElementById('filePathInput');
+    if (filePathInput) {
+        filePathInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                analyzeFile();
+            }
+        });
+    }
+    
+    // Setup monitored paths event listeners
+    setupMonitoredPathsEventListeners();
+}
+
+// Navigation
+function navigateToPage(pageId) {
+    // Update navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.querySelector(`[data-page="${pageId}"]`).classList.add('active');
+    
+    // Update pages
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.remove('active');
+    });
+    document.getElementById(pageId).classList.add('active');
+    
+    currentPage = pageId;
+    
+    // Load page-specific data
+    loadPageData(pageId);
+}
+
+// Load page-specific data
+function loadPageData(pageId) {
+    switch(pageId) {
+        case 'dashboard':
+            loadDashboardData();
+            break;
+        case 'alerts':
+            loadAlerts();
+            break;
+        case 'recovery':
+            loadRecoveryData();
+            loadGoogleDriveStatus();
+            loadGoogleDriveBackups();
+            break;
+        case 'ai-status':
+            loadAIModelInfo();
+            break;
+        case 'reports':
+            loadSystemLogs();
+            break;
+        case 'system-status':
+            loadSystemStatus();
+            break;
+        case 'settings':
+            loadMonitoredPaths();
+            break;
+    }
+}
+
+// Protection Controls
+async function startProtection() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/start`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            protectionActive = true;
+            updateProtectionUI();
+            updateSystemStatus('online');
+            showToast('Protection started successfully', 'success');
+        } else {
+            showToast('Failed to start protection: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error starting protection:', error);
+        showToast('Error starting protection', 'error');
+    }
+    
+    showLoading(false);
+}
+
+async function pauseProtection() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/pause`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            protectionActive = false;
+            updateProtectionUI();
+            updateSystemStatus('paused');
+            showToast('Protection paused', 'warning');
+        } else {
+            showToast('Failed to pause protection: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error pausing protection:', error);
+        showToast('Error pausing protection', 'error');
+    }
+    
+    showLoading(false);
+}
+
+async function stopProtection() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/stop`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            protectionActive = false;
+            updateProtectionUI();
+            updateSystemStatus('offline');
+            showToast('Protection stopped', 'info');
+        } else {
+            showToast('Failed to stop protection: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error stopping protection:', error);
+        showToast('Error stopping protection', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Update Protection UI
+function updateProtectionUI() {
+    const startBtn = document.getElementById('startProtection');
+    const pauseBtn = document.getElementById('pauseProtection');
+    const stopBtn = document.getElementById('stopProtection');
+    
+    if (protectionActive) {
+        startBtn.style.display = 'none';
+        pauseBtn.style.display = 'inline-flex';
+        stopBtn.style.display = 'inline-flex';
+    } else {
+        startBtn.style.display = 'inline-flex';
+        pauseBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+    }
+}
+
+// System Status
+function updateSystemStatus(status) {
+    systemStatus = status;
+    const statusElement = document.getElementById('systemStatus');
+    const indicator = statusElement.querySelector('.status-indicator');
+    const text = statusElement.querySelector('span:last-child');
+    
+    indicator.className = 'status-indicator';
+    
+    switch(status) {
+        case 'online':
+            indicator.classList.add('online');
+            text.textContent = 'System Online';
+            break;
+        case 'paused':
+            indicator.classList.add('offline');
+            text.textContent = 'System Paused';
+            break;
+        case 'offline':
+        default:
+            indicator.classList.add('offline');
+            text.textContent = 'System Offline';
+            break;
+    }
+}
+
+// Check System Status
+async function checkSystemStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/status`);
+        const data = await response.json();
+        
+        if (data.success) {
+            protectionActive = data.data.protection_active;
+            updateProtectionUI();
+            updateSystemStatus(protectionActive ? 'online' : 'offline');
+        }
+    } catch (error) {
+        console.error('Error checking system status:', error);
+        updateSystemStatus('offline');
+    }
+}
+
+// File Analysis
+async function analyzeFile() {
+    const filePathInput = document.getElementById('filePathInput');
+    const filePath = filePathInput.value.trim();
+    
+    if (!filePath) {
+        showToast('Please enter a file path', 'warning');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/analyze/detailed/${encodeURIComponent(filePath)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayAnalysisResult(data.data);
+            showToast('File analysis completed', 'success');
+        } else {
+            showToast('Analysis failed: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error analyzing file:', error);
+        showToast('Error analyzing file', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Display Analysis Result
+function displayAnalysisResult(analysis) {
+    const resultDiv = document.getElementById('analysisResult');
+    
+    let statusClass = 'info';
+    let statusIcon = 'fas fa-info-circle';
+    
+    switch(analysis.status || analysis.overall_status) {
+        case 'Infected':
+            statusClass = 'error';
+            statusIcon = 'fas fa-virus';
+            break;
+        case 'Suspicious':
+            statusClass = 'warning';
+            statusIcon = 'fas fa-exclamation-triangle';
+            break;
+        case 'Safe':
+            statusClass = 'success';
+            statusIcon = 'fas fa-shield-check';
+            break;
+    }
+    
+    const confidence = analysis.confidence || analysis.overall_confidence || 0;
+    const confidencePercent = Math.round(confidence * 100);
+    
+    let html = `
+        <div class="analysis-header">
+            <h4><i class="${statusIcon}"></i> Analysis Result</h4>
+        </div>
+        <div class="analysis-details">
+            <div class="detail-row">
+                <span>File Path:</span>
+                <span>${analysis.file_path}</span>
+            </div>
+            <div class="detail-row">
+                <span>Status:</span>
+                <span class="status-badge ${statusClass}">${analysis.status || analysis.overall_status}</span>
+            </div>
+            <div class="detail-row">
+                <span>Confidence:</span>
+                <span>${confidencePercent}%</span>
+            </div>
+    `;
+    
+    if (analysis.file_size) {
+        html += `
+            <div class="detail-row">
+                <span>File Size:</span>
+                <span>${formatFileSize(analysis.file_size)}</span>
+            </div>
+        `;
+    }
+    
+    if (analysis.file_hash) {
+        html += `
+            <div class="detail-row">
+                <span>SHA256:</span>
+                <span class="hash">${analysis.file_hash.substring(0, 16)}...</span>
+            </div>
+        `;
+    }
+    
+    if (analysis.risk_factors && analysis.risk_factors.length > 0) {
+        html += `
+            <div class="detail-row">
+                <span>Risk Factors:</span>
+                <div class="risk-factors">
+                    ${analysis.risk_factors.map(factor => `<span class="risk-factor">${factor}</span>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    if (analysis.detection_results) {
+        html += `
+            <div class="detection-results">
+                <h5>Detection Results:</h5>
+        `;
+        
+        for (const [detector, result] of Object.entries(analysis.detection_results)) {
+            html += `
+                <div class="detector-result">
+                    <span class="detector-name">${detector.toUpperCase()}:</span>
+                    <span class="detector-status ${result.status.toLowerCase()}">${result.status}</span>
+                    <span class="detector-confidence">(${Math.round(result.confidence * 100)}%)</span>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+    }
+    
+    html += `</div>`;
+    
+    resultDiv.innerHTML = html;
+    resultDiv.style.display = 'block';
+}
+
+// Load Dashboard Data
+async function loadDashboardData() {
+    try {
+        const response = await fetch(`${API_BASE}/stats`);
+        const data = await response.json();
+        
+        if (data.success) {
+            updateStatsCards(data.data);
+            updateRecentFiles(data.data.recent_files || []);
+        }
+    } catch (error) {
+        console.error('Error loading dashboard data:', error);
+    }
+}
+
+// Update Stats Cards
+function updateStatsCards(stats) {
+    document.getElementById('safeFiles').textContent = stats.safe_files || 0;
+    document.getElementById('infectedFiles').textContent = stats.infected_files || 0;
+    document.getElementById('quarantinedFiles').textContent = stats.quarantined_files || 0;
+    document.getElementById('detectedAttacks').textContent = stats.detected_attacks || 0;
+}
+
+// Update Recent Files Table
+function updateRecentFiles(files) {
+    const tbody = document.querySelector('#recentFilesTable tbody');
+    
+    if (files.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No recent files</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML = files.map(file => {
+        const statusClass = file.status.toLowerCase();
+        const confidence = Math.round((file.confidence || 0) * 100);
+        const time = new Date(file.timestamp).toLocaleTimeString();
+        
+        return `
+            <tr>
+                <td>${file.filename}</td>
+                <td><span class="status-badge ${statusClass}">${file.status}</span></td>
+                <td>${time}</td>
+                <td>${confidence}%</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Load Alerts
+async function loadAlerts() {
+    try {
+        const response = await fetch(`${API_BASE}/alerts`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displayAlerts(data.data);
+            updateAlertsBadge(data.data.length);
+        }
+    } catch (error) {
+        console.error('Error loading alerts:', error);
+    }
+}
+
+// Display Alerts
+function displayAlerts(alerts) {
+    const alertsList = document.getElementById('alertsList');
+    
+    if (alerts.length === 0) {
+        alertsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No alerts</div>';
+        return;
+    }
+    
+    alertsList.innerHTML = alerts.map(alert => {
+        const time = new Date(alert.timestamp).toLocaleString();
+        
+        return `
+            <div class="alert-item ${alert.severity}">
+                <div class="alert-icon">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="alert-content">
+                    <div class="alert-message">${alert.message}</div>
+                    <div class="alert-time">${time}</div>
+                </div>
+                <div class="alert-severity">
+                    <span class="severity-badge ${alert.severity}">${alert.severity.toUpperCase()}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Update Alerts Badge
+function updateAlertsBadge(count) {
+    const badge = document.getElementById('alertsBadge');
+    badge.textContent = count;
+    badge.style.display = count > 0 ? 'block' : 'none';
+}
+
+// Send Test Alert
+async function sendTestAlert() {
+    try {
+        const response = await fetch(`${API_BASE}/test-alert`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Test alert sent successfully', 'success');
+            loadAlerts(); // Refresh alerts
+        } else {
+            showToast('Failed to send test alert: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error sending test alert:', error);
+        showToast('Error sending test alert', 'error');
+    }
+}
+
+// Load AI Model Info
+async function loadAIModelInfo() {
+    try {
+        const response = await fetch(`${API_BASE}/ai/info`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displayAIModelInfo(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading AI model info:', error);
+    }
+}
+
+// Display AI Model Info
+function displayAIModelInfo(info) {
+    const aiDetails = document.getElementById('aiDetails');
+    
+    if (!aiDetails) return;
+    
+    let html = '';
+    
+    for (const [key, value] of Object.entries(info)) {
+        let displayValue = value;
+        
+        if (typeof value === 'object') {
+            displayValue = JSON.stringify(value, null, 2);
+        } else if (typeof value === 'boolean') {
+            displayValue = value ? 'Yes' : 'No';
+        }
+        
+        html += `
+            <div class="ai-detail-item">
+                <span>${key.replace(/_/g, ' ').toUpperCase()}:</span>
+                <span>${displayValue}</span>
+            </div>
+        `;
+    }
+    
+    aiDetails.innerHTML = html;
+}
+
+// Reload AI Model
+async function reloadAIModel() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/ai/reload`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('AI model reloaded successfully', 'success');
+            loadAIModelInfo();
+        } else {
+            showToast('Failed to reload AI model: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error reloading AI model:', error);
+        showToast('Error reloading AI model', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Initialize Charts
+function initializeCharts() {
+    const ctx = document.getElementById('attackChart');
+    if (!ctx) return;
+    
+    // Set canvas size explicitly
+    ctx.style.height = '300px';
+    
+    charts.attackChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
+            datasets: [{
+                label: 'Detected Attacks',
+                data: [0, 1, 0, 2, 1, 0],
+                borderColor: '#ef4444',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                tension: 0.4,
+                fill: true,
+                pointBackgroundColor: '#ef4444',
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: 5,
+                pointHoverRadius: 7
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                intersect: false,
+                mode: 'index'
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        color: '#b8c5d6',
+                        font: {
+                            size: 12,
+                            weight: '500'
+                        },
+                        padding: 20,
+                        usePointStyle: true
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(30, 35, 50, 0.95)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#b8c5d6',
+                    borderColor: '#252b3d',
+                    borderWidth: 1,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    padding: 12
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Time',
+                        color: '#b8c5d6',
+                        font: {
+                            size: 12,
+                            weight: '600'
+                        }
+                    },
+                    ticks: {
+                        color: '#6b7280',
+                        font: {
+                            size: 11
+                        },
+                        maxRotation: 0,
+                        padding: 10
+                    },
+                    grid: {
+                        color: 'rgba(107, 114, 128, 0.1)',
+                        drawBorder: false,
+                        lineWidth: 1
+                    },
+                    border: {
+                        display: false
+                    }
+                },
+                y: {
+                    display: true,
+                    title: {
+                        display: true,
+                        text: 'Number of Attacks',
+                        color: '#b8c5d6',
+                        font: {
+                            size: 12,
+                            weight: '600'
+                        }
+                    },
+                    ticks: {
+                        color: '#6b7280',
+                        font: {
+                            size: 11
+                        },
+                        stepSize: 1,
+                        beginAtZero: true,
+                        padding: 10
+                    },
+                    grid: {
+                        color: 'rgba(107, 114, 128, 0.1)',
+                        drawBorder: false,
+                        lineWidth: 1
+                    },
+                    border: {
+                        display: false
+                    }
+                }
+            },
+            elements: {
+                line: {
+                    borderWidth: 3
+                }
+            },
+            layout: {
+                padding: {
+                    top: 10,
+                    right: 10,
+                    bottom: 10,
+                    left: 10
+                }
+            }
+        }
+    });
+}
+
+// Utility Functions
+function showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (show) {
+        overlay.classList.add('show');
+    } else {
+        overlay.classList.remove('show');
+    }
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('toast');
+    const icon = toast.querySelector('.toast-icon');
+    const messageEl = toast.querySelector('.toast-message');
+    
+    // Set icon based on type
+    const icons = {
+        success: 'fas fa-check-circle',
+        error: 'fas fa-exclamation-circle',
+        warning: 'fas fa-exclamation-triangle',
+        info: 'fas fa-info-circle'
+    };
+    
+    icon.className = `toast-icon ${icons[type] || icons.info}`;
+    messageEl.textContent = message;
+    
+    // Set toast type class
+    toast.className = `toast ${type}`;
+    
+    // Show toast
+    toast.classList.add('show');
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Periodic Updates
+function startPeriodicUpdates() {
+    updateInterval = setInterval(() => {
+        if (currentPage === 'dashboard') {
+            loadDashboardData();
+        }
+        checkSystemStatus();
+        loadAlerts();
+    }, 30000); // Update every 30 seconds
+}
+
+// Load System Logs
+async function loadSystemLogs() {
+    try {
+        const response = await fetch(`${API_BASE}/logs`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displaySystemLogs(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading system logs:', error);
+    }
+}
+
+// Display System Logs
+function displaySystemLogs(logs) {
+    const logsContainer = document.getElementById('systemLogs');
+    
+    if (!logsContainer) return;
+    
+    if (logs.length === 0) {
+        logsContainer.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No logs available</div>';
+        return;
+    }
+    
+    logsContainer.innerHTML = logs.map(log => {
+        const time = new Date(log.timestamp).toLocaleString();
+        
+        return `
+            <div class="log-entry">
+                <span class="log-time">${time}</span>
+                <span class="log-level ${log.level.toLowerCase()}">${log.level}</span>
+                <span class="log-message">${log.message}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load Recovery Data
+async function loadRecoveryData() {
+    try {
+        const response = await fetch(`${API_BASE}/quarantine`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displayQuarantineFiles(data.data);
+        }
+    } catch (error) {
+        console.error('Error loading recovery data:', error);
+    }
+}
+
+// Display Quarantine Files
+function displayQuarantineFiles(files) {
+    const quarantineList = document.getElementById('quarantineList');
+    
+    if (!quarantineList) return;
+    
+    if (files.length === 0) {
+        quarantineList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No quarantined files</div>';
+        return;
+    }
+    
+    quarantineList.innerHTML = files.map(file => {
+        const time = new Date(file.quarantine_time).toLocaleString();
+        
+        return `
+            <div class="quarantine-item">
+                <div class="file-info">
+                    <div class="file-name">${file.original_path}</div>
+                    <div class="file-details">Quarantined: ${time}</div>
+                </div>
+                <div class="file-actions">
+                    <button class="btn btn-secondary" onclick="restoreFile('${file.id}')">
+                        <i class="fas fa-undo"></i> Restore
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteFile('${file.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Load System Status
+function loadSystemStatus() {
+    // Update system health indicators
+    const systemHealth = document.getElementById('systemHealth');
+    const protectionStatus = document.getElementById('protectionStatus');
+    const aiModelStatus = document.getElementById('aiModelStatus');
+    
+    if (systemHealth) {
+        const healthCircle = systemHealth.querySelector('.health-circle');
+        const healthText = systemHealth.querySelector('span');
+        
+        if (systemStatus === 'online') {
+            healthCircle.className = 'health-circle good';
+            healthText.textContent = 'Operational';
+        } else {
+            healthCircle.className = 'health-circle danger';
+            healthText.textContent = 'Offline';
+        }
+    }
+    
+    if (protectionStatus) {
+        const statusText = protectionStatus.querySelector('span');
+        statusText.textContent = protectionActive ? 'Active' : 'Inactive';
+    }
+    
+    if (aiModelStatus) {
+        const statusText = aiModelStatus.querySelector('span');
+        statusText.textContent = 'Loaded'; // This should be updated based on actual AI status
+    }
+}
+
+// Save Settings
+async function saveSettings() {
+    const settings = {
+        protection_level: document.getElementById('protectionLevel').value,
+        enable_ai: document.getElementById('enableAI').checked,
+        enable_backup: document.getElementById('enableBackup').checked,
+        holiday_mode: document.getElementById('holidayMode').checked,
+        enable_email_alerts: document.getElementById('enableEmailAlerts').checked,
+        enable_sms_alerts: document.getElementById('enableSMSAlerts').checked
+    };
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/settings`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(settings)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Settings saved successfully', 'success');
+        } else {
+            showToast('Failed to save settings: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        showToast('Error saving settings', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// File Operations
+async function restoreFile(fileId) {
+    if (!confirm('Are you sure you want to restore this file?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/restore/${fileId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('File restored successfully', 'success');
+            loadRecoveryData();
+        } else {
+            showToast('Failed to restore file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error restoring file:', error);
+        showToast('Error restoring file', 'error');
+    }
+    
+    showLoading(false);
+}
+
+async function deleteFile(fileId) {
+    if (!confirm('Are you sure you want to permanently delete this file?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/delete/${fileId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('File deleted successfully', 'success');
+            loadRecoveryData();
+        } else {
+            showToast('Failed to delete file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        showToast('Error deleting file', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', function() {
+    if (updateInterval) {
+        clearInterval(updateInterval);
+    }
+});
+
+
+// ==================== Monitored Paths Functions ====================
+
+// Load monitored paths
+async function loadMonitoredPaths() {
+    try {
+        const response = await fetch(`${API_BASE}/monitored-paths`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displayMonitoredPaths(data.data);
+        } else {
+            showToast('Failed to load monitored paths: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error loading monitored paths:', error);
+        showToast('Error loading monitored paths', 'error');
+    }
+}
+
+// Display monitored paths
+function displayMonitoredPaths(paths) {
+    const pathsList = document.getElementById('monitoredPathsList');
+    
+    if (paths.length === 0) {
+        pathsList.innerHTML = `
+            <div class="empty-paths-message">
+                <i class="fas fa-folder-open"></i>
+                <p>No monitored paths configured</p>
+                <small>Add a path above to start monitoring</small>
+            </div>
+        `;
+        return;
+    }
+    
+    pathsList.innerHTML = paths.map(path => {
+        const statusClass = path.status === 'monitoring' ? 'monitoring' : 
+                           path.status === 'paused' ? 'paused' : 'error';
+        
+        const lastScan = path.last_scan ? 
+            new Date(path.last_scan).toLocaleString() : 'Never';
+        
+        return `
+            <div class="path-item" data-path-id="${path.id}">
+                <div class="path-info">
+                    <div class="path-icon">
+                        <i class="fas fa-folder"></i>
+                    </div>
+                    <div class="path-details">
+                        <div class="path-name">${path.path}</div>
+                        <div class="path-status">
+                            <span class="path-status-indicator ${statusClass}"></span>
+                            <span>${path.status}</span>
+                            <span>•</span>
+                            <span>Last scan: ${lastScan}</span>
+                            ${path.files_count > 0 ? `<span>• ${path.files_count} files</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+                <div class="path-actions">
+                    <button class="path-action-btn scan" onclick="scanMonitoredPath(${path.id})" title="Scan Path">
+                        <i class="fas fa-search"></i>
+                    </button>
+                    <button class="path-action-btn pause" onclick="toggleMonitoredPath(${path.id})" 
+                            title="${path.is_active ? 'Pause Monitoring' : 'Resume Monitoring'}">
+                        <i class="fas fa-${path.is_active ? 'pause' : 'play'}"></i>
+                    </button>
+                    <button class="path-action-btn delete" onclick="removeMonitoredPath(${path.id})" title="Remove Path">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Add monitored path
+async function addMonitoredPath() {
+    const pathInput = document.getElementById('pathInput');
+    const path = pathInput.value.trim();
+    
+    if (!path) {
+        showToast('Please enter a path to monitor', 'warning');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/monitored-paths`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                path: path,
+                description: ''
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            pathInput.value = '';
+            loadMonitoredPaths();
+            showToast('Path added successfully', 'success');
+        } else {
+            showToast('Failed to add path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error adding monitored path:', error);
+        showToast('Error adding monitored path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Remove monitored path
+async function removeMonitoredPath(pathId) {
+    if (!confirm('Are you sure you want to remove this monitored path?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/monitored-paths/${pathId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadMonitoredPaths();
+            showToast('Path removed successfully', 'success');
+        } else {
+            showToast('Failed to remove path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing monitored path:', error);
+        showToast('Error removing monitored path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Toggle monitored path
+async function toggleMonitoredPath(pathId) {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/monitored-paths/${pathId}/toggle`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadMonitoredPaths();
+            showToast(data.message, 'success');
+        } else {
+            showToast('Failed to toggle path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error toggling monitored path:', error);
+        showToast('Error toggling monitored path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Scan monitored path
+async function scanMonitoredPath(pathId) {
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`${API_BASE}/monitored-paths/${pathId}/scan`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadMonitoredPaths();
+            showToast('Path scanned successfully', 'success');
+            
+            // Show scan results if available
+            if (data.data.scan_results && data.data.scan_results.length > 0) {
+                console.log('Scan results:', data.data.scan_results);
+                // You can add a modal or notification to show detailed results
+            }
+        } else {
+            showToast('Failed to scan path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error scanning monitored path:', error);
+        showToast('Error scanning monitored path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Browse for path with file dialog
+async function browsePath() {
+    try {
+        // Create file input element
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.webkitdirectory = true; // Allow directory selection
+        fileInput.style.display = 'none';
+        
+        // Add to DOM temporarily
+        document.body.appendChild(fileInput);
+        
+        // Handle file selection
+        fileInput.addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                // Get the directory path from the first file
+                const firstFile = e.target.files[0];
+                const pathParts = firstFile.webkitRelativePath.split('/');
+                pathParts.pop(); // Remove filename to get directory path
+                const directoryPath = pathParts.join('/');
+                
+                // Set the path in the input field
+                const pathInput = document.getElementById('pathInput');
+                if (pathInput) {
+                    pathInput.value = directoryPath || firstFile.webkitRelativePath.split('/')[0];
+                }
+                
+                showToast('Directory selected successfully', 'success');
+            }
+            
+            // Clean up
+            document.body.removeChild(fileInput);
+        });
+        
+        // Trigger file dialog
+        fileInput.click();
+        
+    } catch (error) {
+        console.error('Error opening file browser:', error);
+        showToast('File browser not available. Please enter path manually.', 'warning');
+        document.getElementById('pathInput').focus();
+    }
+}
+
+// Update the existing setupEventListeners function to include monitored paths events
+function setupMonitoredPathsEventListeners() {
+    // Add Path button
+    const addPathBtn = document.getElementById('addPath');
+    if (addPathBtn) {
+        addPathBtn.addEventListener('click', addMonitoredPath);
+    }
+    
+    // Browse Path button
+    const browsePathBtn = document.getElementById('browsePath');
+    if (browsePathBtn) {
+        browsePathBtn.addEventListener('click', browsePath);
+    }
+    
+    // Path input enter key
+    const pathInput = document.getElementById('pathInput');
+    if (pathInput) {
+        pathInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addMonitoredPath();
+            }
+        });
+    }
+}
+
+// Update the existing loadPageData function to include monitored paths
+function loadMonitoredPathsData() {
+    if (currentPage === 'settings') {
+        loadMonitoredPaths();
+    }
+}
+
+
+// Open Google Drive Backups
+function openGoogleDriveBackups() {
+    // Google Drive URL
+    const googleDriveUrl = 'https://drive.google.com/drive/folders/';
+    
+    // Try to get the folder ID from the API
+    fetch(`${API_BASE}/backup/drive-folder-id`)
+        .then(response => response.json())
+        .then(data => {
+            let url = googleDriveUrl;
+            
+            // If we have a specific folder ID, add it to the URL
+            if (data.success && data.data.folder_id) {
+                url += data.data.folder_id;
+            }
+            
+            // Open Google Drive in a new tab
+            window.open(url, '_blank');
+        })
+        .catch(error => {
+            console.error('Error getting Google Drive folder ID:', error);
+            // If there's an error, just open Google Drive main page
+            window.open('https://drive.google.com', '_blank');
+        });
+}
+
+
+// Open Backup Folder
+function openBackupFolder() {
+    fetch(`${API_BASE}/backup/open-folder`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Opening backup folder...', 'info');
+        } else {
+            showToast('Failed to open backup folder: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error opening backup folder:', error);
+        showToast('Error opening backup folder', 'error');
+    });
+}
+
+// Cleanup Old Backups
+function cleanupBackups() {
+    if (!confirm('Are you sure you want to clean up old backups?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    fetch(`${API_BASE}/backup/cleanup`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Old backups cleaned up successfully', 'success');
+        } else {
+            showToast('Failed to clean up backups: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error cleaning up backups:', error);
+        showToast('Error cleaning up backups', 'error');
+    })
+    .finally(() => {
+        showLoading(false);
+    });
+}
+
+
+
+// Google Drive Functions
+function authenticateGoogleDrive() {
+    fetch('/api/google-drive/authenticate', {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('تم الاتصال بـ Google Drive بنجاح', 'success');
+            loadGoogleDriveStatus();
+        } else {
+            showToast('فشل في الاتصال بـ Google Drive: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error authenticating Google Drive:', error);
+        showToast('خطأ في الاتصال بـ Google Drive', 'error');
+    });
+}
+
+function uploadToGoogleDrive(filePath) {
+    fetch('/api/google-drive/upload', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            file_path: filePath
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('تم رفع الملف إلى Google Drive بنجاح', 'success');
+        } else {
+            showToast('فشل في رفع الملف: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error uploading to Google Drive:', error);
+        showToast('خطأ في رفع الملف إلى Google Drive', 'error');
+    });
+}
+
+function backupFolderToGoogleDrive(folderPath) {
+    fetch('/api/google-drive/backup-folder', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            folder_path: folderPath
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`تم رفع ${data.uploaded_files.length} ملف إلى Google Drive`, 'success');
+        } else {
+            showToast('فشل في النسخ الاحتياطي: ' + data.error, 'error');
+        }
+    })
+    .catch(error => {
+        console.error('Error backing up folder to Google Drive:', error);
+        showToast('خطأ في النسخ الاحتياطي إلى Google Drive', 'error');
+    });
+}
+
+function loadGoogleDriveBackups() {
+    fetch('/api/google-drive/list-backups')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayGoogleDriveBackups(data.data);
+        } else {
+            console.error('Error loading Google Drive backups:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading Google Drive backups:', error);
+    });
+}
+
+function displayGoogleDriveBackups(backups) {
+    const container = document.getElementById('googleDriveBackups');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (backups.length === 0) {
+        container.innerHTML = '<p>لا توجد نسخ احتياطية على Google Drive</p>';
+        return;
+    }
+    
+    backups.forEach(backup => {
+        const backupElement = document.createElement('div');
+        backupElement.className = 'backup-item';
+        backupElement.innerHTML = `
+            <div class="backup-info">
+                <h4>${backup.name}</h4>
+                <p>تاريخ الإنشاء: ${new Date(backup.createdTime).toLocaleString('ar-SA')}</p>
+                <p>الحجم: ${formatFileSize(backup.size || 0)}</p>
+            </div>
+            <div class="backup-actions">
+                <button class="btn btn-sm btn-primary" onclick="openGoogleDriveFile('${backup.id}')">
+                    <i class="fas fa-external-link-alt"></i>
+                    فتح
+                </button>
+            </div>
+        `;
+        container.appendChild(backupElement);
+    });
+}
+
+function openGoogleDriveFile(fileId) {
+    window.open(`https://drive.google.com/file/d/${fileId}/view`, '_blank');
+}
+
+function loadGoogleDriveStatus() {
+    fetch('/api/google-drive/status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateGoogleDriveStatusDisplay(data.data);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading Google Drive status:', error);
+    });
+}
+
+function updateGoogleDriveStatusDisplay(status) {
+    const statusElement = document.getElementById('googleDriveStatus');
+    if (statusElement) {
+        statusElement.innerHTML = `
+            <div class="status-item">
+                <span class="status-label">حالة الاتصال:</span>
+                <span class="status-value ${status.is_authenticated ? 'success' : 'error'}">
+                    ${status.is_authenticated ? 'متصل' : 'غير متصل'}
+                </span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">ملف بيانات الاعتماد:</span>
+                <span class="status-value ${status.credentials_file_exists ? 'success' : 'error'}">
+                    ${status.credentials_file_exists ? 'موجود' : 'غير موجود'}
+                </span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">رمز الوصول:</span>
+                <span class="status-value ${status.token_file_exists ? 'success' : 'error'}">
+                    ${status.token_file_exists ? 'موجود' : 'غير موجود'}
+                </span>
+            </div>
+        `;
+    }
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+
+
+// Recovery Page Functions
+let currentStrategy = 'both';
+let quarantinePaths = [];
+let googleDriveConnected = false;
+
+// Initialize Recovery Page
+function initializeRecoveryPage() {
+    loadQuarantineSettings();
+    loadQuarantinePaths();
+    loadGoogleDriveStatus();
+    setupRecoveryEventListeners();
+}
+
+// Setup Recovery Event Listeners
+function setupRecoveryEventListeners() {
+    // Strategy selection
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.addEventListener('click', function() {
+            selectStrategy(this.dataset.strategy);
+        });
+    });
+
+    // Add quarantine path
+    const addPathBtn = document.getElementById('addQuarantinePath');
+    if (addPathBtn) {
+        addPathBtn.addEventListener('click', addQuarantinePath);
+    }
+
+    // Browse quarantine path
+    const browseBtn = document.getElementById('browseQuarantinePath');
+    if (browseBtn) {
+        browseBtn.addEventListener('click', browseQuarantinePath);
+    }
+
+    // Google Drive controls
+    const connectBtn = document.getElementById('connectGoogleDrive');
+    if (connectBtn) {
+        connectBtn.addEventListener('click', connectToGoogleDrive);
+    }
+
+    const openDriveBtn = document.getElementById('openGoogleDrive');
+    if (openDriveBtn) {
+        openDriveBtn.addEventListener('click', openGoogleDrive);
+    }
+
+    const disconnectBtn = document.getElementById('disconnectGoogleDrive');
+    if (disconnectBtn) {
+        disconnectBtn.addEventListener('click', disconnectGoogleDrive);
+    }
+
+    // Quarantine controls
+    const refreshBtn = document.getElementById('refreshQuarantine');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshQuarantineList);
+    }
+
+    const openLocalBtn = document.getElementById('openLocalQuarantine');
+    if (openLocalBtn) {
+        openLocalBtn.addEventListener('click', openLocalQuarantine);
+    }
+
+    // Backup controls
+    const backupBtn = document.getElementById('backupToGoogleDrive');
+    if (backupBtn) {
+        backupBtn.addEventListener('click', backupToGoogleDrive);
+    }
+
+    const cleanupBtn = document.getElementById('cleanupBackups');
+    if (cleanupBtn) {
+        cleanupBtn.addEventListener('click', cleanupOldBackups);
+    }
+}
+
+// Select Recovery Strategy
+function selectStrategy(strategy) {
+    currentStrategy = strategy;
+    
+    // Update UI
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.classList.remove('active');
+    });
+    
+    document.querySelector(`[data-strategy="${strategy}"]`).classList.add('active');
+    
+    // Save strategy
+    saveQuarantineStrategy(strategy);
+    
+    showToast(`Recovery strategy set to: ${strategy.replace('_', ' ')}`, 'success');
+}
+
+// Save Quarantine Strategy
+async function saveQuarantineStrategy(strategy) {
+    try {
+        const response = await fetch('/api/recovery/quarantine-strategy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ strategy: strategy })
+        });
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+            showToast('Failed to save strategy: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving strategy:', error);
+        showToast('Error saving strategy', 'error');
+    }
+}
+
+// Load Quarantine Settings
+async function loadQuarantineSettings() {
+    try {
+        const response = await fetch('/api/recovery/quarantine-settings');
+        const data = await response.json();
+        
+        if (data.success) {
+            const strategy = data.settings.quarantine_strategy || 'both';
+            selectStrategy(strategy);
+        }
+    } catch (error) {
+        console.error('Error loading quarantine settings:', error);
+    }
+}
+
+// Add Quarantine Path
+async function addQuarantinePath() {
+    const pathInput = document.getElementById('quarantinePath');
+    const path = pathInput.value.trim();
+    
+    if (!path) {
+        showToast('Please enter a valid path', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/local-quarantine-paths', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            pathInput.value = '';
+            loadQuarantinePaths();
+            showToast(data.message, 'success');
+        } else {
+            showToast('Failed to add path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error adding path:', error);
+        showToast('Error adding path', 'error');
+    }
+}
+
+// Browse Quarantine Path
+function browseQuarantinePath() {
+    // This would typically open a file dialog
+    // For now, we'll show a simple prompt
+    const path = prompt('Enter quarantine path:');
+    if (path) {
+        document.getElementById('quarantinePath').value = path;
+    }
+}
+
+// Load Quarantine Paths
+async function loadQuarantinePaths() {
+    try {
+        const response = await fetch('/api/recovery/local-quarantine-paths');
+        const data = await response.json();
+        
+        if (data.success) {
+            quarantinePaths = data.paths;
+            displayQuarantinePaths(data.paths);
+        }
+    } catch (error) {
+        console.error('Error loading quarantine paths:', error);
+    }
+}
+
+// Display Quarantine Paths
+function displayQuarantinePaths(paths) {
+    const pathsList = document.getElementById('quarantinePathsList');
+    
+    if (!pathsList) return;
+    
+    if (paths.length === 0) {
+        pathsList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 1rem;">No custom paths configured</div>';
+        return;
+    }
+    
+    pathsList.innerHTML = paths.map(path => `
+        <div class="path-item">
+            <span class="path-text">${path}</span>
+            <div class="path-actions">
+                <button class="btn btn-small btn-danger" onclick="removeQuarantinePath('${path}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Remove Quarantine Path
+async function removeQuarantinePath(path) {
+    if (!confirm(`Are you sure you want to remove this path: ${path}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/local-quarantine-paths', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadQuarantinePaths();
+            showToast(data.message, 'success');
+        } else {
+            showToast('Failed to remove path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing path:', error);
+        showToast('Error removing path', 'error');
+    }
+}
+
+// Load Google Drive Status
+async function loadGoogleDriveStatus() {
+    try {
+        const response = await fetch('/api/recovery/google-drive-status');
+        const data = await response.json();
+        
+        if (data.success) {
+            updateGoogleDriveUI(data);
+            googleDriveConnected = data.connected;
+        }
+    } catch (error) {
+        console.error('Error loading Google Drive status:', error);
+    }
+}
+
+// Update Google Drive UI
+function updateGoogleDriveUI(status) {
+    const statusIndicator = document.querySelector('#driveStatus .status-dot');
+    const statusText = document.querySelector('#driveStatus .status-indicator span:last-child');
+    const connectBtn = document.getElementById('connectGoogleDrive');
+    const openBtn = document.getElementById('openGoogleDrive');
+    const disconnectBtn = document.getElementById('disconnectGoogleDrive');
+    
+    if (status.connected) {
+        statusIndicator.className = 'status-dot online';
+        statusText.textContent = 'Connected to Google Drive';
+        connectBtn.style.display = 'none';
+        openBtn.style.display = 'inline-flex';
+        disconnectBtn.style.display = 'inline-flex';
+    } else {
+        statusIndicator.className = 'status-dot offline';
+        statusText.textContent = 'Not Connected';
+        connectBtn.style.display = 'inline-flex';
+        openBtn.style.display = 'none';
+        disconnectBtn.style.display = 'none';
+    }
+}
+
+// Connect to Google Drive
+async function connectToGoogleDrive() {
+    try {
+        const response = await fetch('/api/recovery/google-drive/enable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ credentials_file: '../credentials.json' })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(data.message, 'success');
+            loadGoogleDriveStatus();
+        } else {
+            showToast('Failed to connect: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error connecting to Google Drive:', error);
+        showToast('Error connecting to Google Drive', 'error');
+    }
+}
+
+// Open Google Drive
+function openGoogleDrive() {
+    window.open('https://drive.google.com/drive/my-drive?hl=ar', '_blank');
+}
+
+// Disconnect Google Drive
+async function disconnectGoogleDrive() {
+    if (!confirm('Are you sure you want to disconnect from Google Drive?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/google-drive/disable', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(data.message, 'success');
+            loadGoogleDriveStatus();
+        } else {
+            showToast('Failed to disconnect: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error disconnecting from Google Drive:', error);
+        showToast('Error disconnecting from Google Drive', 'error');
+    }
+}
+
+// Refresh Quarantine List
+async function refreshQuarantineList() {
+    try {
+        const response = await fetch('/api/recovery/quarantined-files');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayQuarantinedFiles(data.files);
+            showToast('Quarantine list refreshed', 'success');
+        } else {
+            showToast('Failed to refresh list: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error refreshing quarantine list:', error);
+        showToast('Error refreshing quarantine list', 'error');
+    }
+}
+
+// Display Quarantined Files
+function displayQuarantinedFiles(files) {
+    const quarantineList = document.getElementById('quarantineList');
+    
+    if (!quarantineList) return;
+    
+    if (files.length === 0) {
+        quarantineList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No quarantined files found</div>';
+        return;
+    }
+    
+    quarantineList.innerHTML = files.map(file => `
+        <div class="quarantine-item">
+            <div class="quarantine-item-info">
+                <div class="quarantine-item-name">${file.name || 'Unknown File'}</div>
+                <div class="quarantine-item-path">${file.path || 'Unknown Path'}</div>
+                <div class="quarantine-item-date">${file.date ? new Date(file.date).toLocaleString() : 'Unknown Date'}</div>
+            </div>
+            <div class="quarantine-item-actions">
+                <button class="btn btn-small btn-secondary" onclick="restoreQuarantinedFile('${file.path}')">
+                    <i class="fas fa-undo"></i>
+                    Restore
+                </button>
+                <button class="btn btn-small btn-danger" onclick="deleteQuarantinedFile('${file.path}')">
+                    <i class="fas fa-trash"></i>
+                    Delete
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Open Local Quarantine
+async function openLocalQuarantine() {
+    try {
+        const response = await fetch(`${API_BASE}/backup/open-folder`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Opening local quarantine folder', 'success');
+        } else {
+            showToast('Failed to open folder: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error opening local quarantine:', error);
+        showToast('Error opening local quarantine', 'error');
+    }
+}
+
+// Restore Quarantined File
+async function restoreQuarantinedFile(filePath) {
+    if (!confirm(`Are you sure you want to restore this file: ${filePath}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/restore-file', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ file_path: filePath })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(data.message, 'success');
+            refreshQuarantineList();
+        } else {
+            showToast('Failed to restore file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error restoring file:', error);
+        showToast('Error restoring file', 'error');
+    }
+}
+
+// Delete Quarantined File
+async function deleteQuarantinedFile(filePath) {
+    if (!confirm(`Are you sure you want to permanently delete this file: ${filePath}?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/delete-quarantined-file', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ file_path: filePath })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(data.message, 'success');
+            refreshQuarantineList();
+        } else {
+            showToast('Failed to delete file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        showToast('Error deleting file', 'error');
+    }
+}
+
+// Backup to Google Drive
+async function backupToGoogleDrive() {
+    if (!googleDriveConnected) {
+        showToast('Please connect to Google Drive first', 'warning');
+        return;
+    }
+    
+    showToast('Starting backup to Google Drive...', 'info');
+    
+    try {
+        const response = await fetch('/api/google-drive/backup', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Backup completed successfully', 'success');
+        } else {
+            showToast('Backup failed: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error backing up to Google Drive:', error);
+        showToast('Error backing up to Google Drive', 'error');
+    }
+}
+
+// Cleanup Old Backups
+async function cleanupOldBackups() {
+    if (!confirm('Are you sure you want to cleanup old backups?')) {
+        return;
+    }
+    
+    showToast('Cleaning up old backups...', 'info');
+    
+    try {
+        const response = await fetch('/api/google-drive/cleanup', {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Cleanup completed successfully', 'success');
+        } else {
+            showToast('Cleanup failed: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error cleaning up backups:', error);
+        showToast('Error cleaning up backups', 'error');
+    }
+}
+
+// Update navigation to include recovery initialization
+const originalNavigateToPage = navigateToPage;
+navigateToPage = function(page) {
+    originalNavigateToPage(page);
+    
+    if (page === 'recovery') {
+        setTimeout(() => {
+            initializeRecoveryPage();
+        }, 100);
+    }
+};
+
+
+// Browse File to Analyze
+function browseFileToAnalyze() {
+    // Create file input element
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '*/*';
+    fileInput.style.display = 'none';
+    
+    // Add event listener
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // For web applications, we can't get the full file path for security reasons
+            // Instead, we'll show the file name and handle the file upload
+            const filePathInput = document.getElementById('filePathInput');
+            filePathInput.value = file.name;
+            
+            // Store the file object for later use
+            filePathInput.fileObject = file;
+            
+            showToast('File selected: ' + file.name, 'success');
+        }
+    });
+    
+    // Trigger file selection
+    document.body.appendChild(fileInput);
+    fileInput.click();
+    document.body.removeChild(fileInput);
+}
+
+
+// Recovery Strategy Selection
+async function selectRecoveryStrategy(strategy) {
+    // Remove active class from all cards
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.classList.remove('active');
+    });
+    
+    // Add active class to selected card
+    document.querySelector(`[data-strategy="${strategy}"]`).classList.add('active');
+    
+    // Store selected strategy locally
+    localStorage.setItem('recoveryStrategy', strategy);
+    
+    // Send to server
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/recovery/set-strategy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ strategy: strategy })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast(`Recovery strategy set to: ${strategy.replace(/_/g, ' ')}`, 'success');
+        } else {
+            showToast('Failed to save strategy: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error saving strategy:', error);
+        showToast('Error saving strategy', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Connect to Google Drive
+async function connectGoogleDrive() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/google-drive/connect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            updateGoogleDriveStatus(true);
+            showToast('Connected to Google Drive successfully', 'success');
+        } else {
+            showToast('Failed to connect to Google Drive: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error connecting to Google Drive:', error);
+        showToast('Error connecting to Google Drive', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Disconnect from Google Drive
+async function disconnectGoogleDrive() {
+    if (!confirm('Are you sure you want to disconnect from Google Drive?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/google-drive/disconnect', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            updateGoogleDriveStatus(false);
+            showToast('Disconnected from Google Drive', 'info');
+        } else {
+            showToast('Failed to disconnect from Google Drive: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error disconnecting from Google Drive:', error);
+        showToast('Error disconnecting from Google Drive', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Update Google Drive Status
+function updateGoogleDriveStatus(connected) {
+    const statusDot = document.querySelector('#driveStatus .status-dot');
+    const statusText = document.querySelector('#driveStatus .status-indicator span:last-child');
+    const connectBtn = document.getElementById('connectGoogleDrive');
+    const openBtn = document.getElementById('openGoogleDrive');
+    const disconnectBtn = document.getElementById('disconnectGoogleDrive');
+    
+    if (connected) {
+        statusDot.className = 'status-dot online';
+        statusText.textContent = 'Connected';
+        connectBtn.style.display = 'none';
+        openBtn.style.display = 'inline-flex';
+        disconnectBtn.style.display = 'inline-flex';
+    } else {
+        statusDot.className = 'status-dot offline';
+        statusText.textContent = 'Not Connected';
+        connectBtn.style.display = 'inline-flex';
+        openBtn.style.display = 'none';
+        disconnectBtn.style.display = 'none';
+    }
+}
+
+// Refresh Quarantine List
+async function refreshQuarantineList() {
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/recovery/quarantined-files-list');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayQuarantineFiles(data.files || []);
+            showToast('Quarantine list refreshed', 'success');
+        } else {
+            showToast('Failed to refresh quarantine list: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error refreshing quarantine list:', error);
+        showToast('Error refreshing quarantine list', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Display Quarantine Files
+function displayQuarantineFiles(files) {
+    const quarantineList = document.getElementById('quarantineList');
+    
+    if (!quarantineList) return;
+    
+    if (files.length === 0) {
+        quarantineList.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 2rem;">No quarantined files</div>';
+        return;
+    }
+    
+    quarantineList.innerHTML = files.map(file => {
+        const time = new Date(file.quarantine_time || Date.now()).toLocaleString();
+        
+        return `
+            <div class="quarantine-item">
+                <div class="file-info">
+                    <div class="file-name">${file.original_path || file.name}</div>
+                    <div class="file-details">Quarantined: ${time}</div>
+                </div>
+                <div class="file-actions">
+                    <button class="btn btn-secondary" onclick="restoreFile('${file.id}')">
+                        <i class="fas fa-undo"></i> Restore
+                    </button>
+                    <button class="btn btn-danger" onclick="deleteQuarantinedFile('${file.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Open Local Quarantine Folder
+async function openLocalQuarantine() {
+    try {
+        const response = await fetch('/api/recovery/open-quarantine-folder', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Quarantine folder opened', 'success');
+        } else {
+            showToast('Failed to open quarantine folder: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error opening quarantine folder:', error);
+        showToast('Error opening quarantine folder', 'error');
+    }
+}
+
+// Browse Quarantine Path
+function browseQuarantinePath() {
+    // Create directory input element (HTML5 doesn't support directory selection directly)
+    // We'll use a workaround with file input
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.style.display = 'none';
+    
+    input.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            // Get the directory path from the first file
+            const firstFile = e.target.files[0];
+            const pathParts = firstFile.webkitRelativePath.split('/');
+            const directoryPath = pathParts[0];
+            
+            document.getElementById('quarantinePath').value = directoryPath;
+            showToast('Directory selected: ' + directoryPath, 'success');
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+}
+
+// Add Quarantine Path
+async function addQuarantinePath() {
+    const pathInput = document.getElementById('quarantinePath');
+    const path = pathInput.value.trim();
+    
+    if (!path) {
+        showToast('Please enter a quarantine path', 'warning');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/recovery/add-quarantine-path', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            pathInput.value = '';
+            loadQuarantinePaths();
+            showToast('Quarantine path added successfully', 'success');
+        } else {
+            showToast('Failed to add quarantine path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error adding quarantine path:', error);
+        showToast('Error adding quarantine path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Load Quarantine Paths
+async function loadQuarantinePaths() {
+    try {
+        const response = await fetch('/api/recovery/quarantine-paths');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayQuarantinePaths(data.paths || []);
+        }
+    } catch (error) {
+        console.error('Error loading quarantine paths:', error);
+    }
+}
+
+// Display Quarantine Paths
+function displayQuarantinePaths(paths) {
+    const pathsList = document.getElementById('quarantinePathsList');
+    
+    if (!pathsList) return;
+    
+    if (paths.length === 0) {
+        pathsList.innerHTML = '<div style="color: var(--text-muted);">No quarantine paths configured</div>';
+        return;
+    }
+    
+    pathsList.innerHTML = paths.map(path => `
+        <div class="path-item">
+            <span class="path-text">${path}</span>
+            <button class="btn btn-danger btn-sm" onclick="removeQuarantinePath('${path}')">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Remove Quarantine Path
+async function removeQuarantinePath(path) {
+    if (!confirm('Are you sure you want to remove this quarantine path?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/remove-quarantine-path', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadQuarantinePaths();
+            showToast('Quarantine path removed', 'success');
+        } else {
+            showToast('Failed to remove quarantine path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing quarantine path:', error);
+        showToast('Error removing quarantine path', 'error');
+    }
+}
+
+// Restore File
+async function restoreFile(fileId) {
+    if (!confirm('Are you sure you want to restore this file?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`/api/recovery/restore-file/${fileId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            refreshQuarantineList();
+            showToast('File restored successfully', 'success');
+        } else {
+            showToast('Failed to restore file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error restoring file:', error);
+        showToast('Error restoring file', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Delete Quarantined File
+async function deleteQuarantinedFile(fileId) {
+    if (!confirm('Are you sure you want to permanently delete this file?')) {
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch(`/api/recovery/delete-file/${fileId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            refreshQuarantineList();
+            showToast('File deleted permanently', 'success');
+        } else {
+            showToast('Failed to delete file: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        showToast('Error deleting file', 'error');
+    }
+    
+    showLoading(false);
+}
+
+
+// Browse Local Storage Path
+function browseLocalStoragePath() {
+    // Create directory input element
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.webkitdirectory = true;
+    input.style.display = 'none';
+    
+    input.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            // Get the directory path from the first file
+            const firstFile = e.target.files[0];
+            const pathParts = firstFile.webkitRelativePath.split('/');
+            const directoryPath = pathParts[0];
+            
+            document.getElementById('localStoragePath').value = directoryPath;
+            showToast('Local storage directory selected: ' + directoryPath, 'success');
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+}
+
+// Add Local Storage Path
+async function addLocalStoragePath() {
+    const pathInput = document.getElementById('localStoragePath');
+    const path = pathInput.value.trim();
+    
+    if (!path) {
+        showToast('Please enter a local storage path', 'warning');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/recovery/add-local-storage-path', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            pathInput.value = '';
+            loadLocalStoragePaths();
+            showToast('Local storage path added successfully', 'success');
+        } else {
+            showToast('Failed to add local storage path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error adding local storage path:', error);
+        showToast('Error adding local storage path', 'error');
+    }
+    
+    showLoading(false);
+}
+
+// Load Local Storage Paths
+async function loadLocalStoragePaths() {
+    try {
+        const response = await fetch('/api/recovery/local-storage-paths');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayLocalStoragePaths(data.paths || []);
+        }
+    } catch (error) {
+        console.error('Error loading local storage paths:', error);
+    }
+}
+
+// Display Local Storage Paths
+function displayLocalStoragePaths(paths) {
+    const pathsList = document.getElementById('localStoragePathsList');
+    
+    if (!pathsList) return;
+    
+    if (paths.length === 0) {
+        pathsList.innerHTML = '<div style="color: var(--text-muted);">No local storage paths configured</div>';
+        return;
+    }
+    
+    pathsList.innerHTML = paths.map(path => `
+        <div class="path-item">
+            <span class="path-text">${path}</span>
+            <button class="btn btn-danger btn-sm" onclick="removeLocalStoragePath('${path}')">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+// Remove Local Storage Path
+async function removeLocalStoragePath(path) {
+    if (!confirm('Are you sure you want to remove this local storage path?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/recovery/remove-local-storage-path', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ path: path })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadLocalStoragePaths();
+            showToast('Local storage path removed', 'success');
+        } else {
+            showToast('Failed to remove local storage path: ' + data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Error removing local storage path:', error);
+        showToast('Error removing local storage path', 'error');
+    }
+}
+
+
+.encrypted

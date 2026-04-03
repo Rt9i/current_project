@@ -1,0 +1,378 @@
+#  ransomware_protection_system\src\pretrained_ai_model.py
+
+import os
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
+from sklearn.preprocessing import StandardScaler
+import joblib
+import logging
+import math
+import base64
+import hashlib
+from typing import Tuple, List, Dict
+import pickle
+
+class PretrainedRansomwareDetector:
+    """نموذج ذكاء اصطناعي جاهز ومدرب لكشف فيروسات الفدية"""
+    
+    def __init__(self, model_path: str = "pretrained_ransomware_model.pkl"):
+        self.model_path = model_path
+        self.model = None
+        self.scaler = None
+        self.is_loaded = False
+        
+        # تحميل النموذج المدرب مسبقاً أو إنشاء واحد جديد
+        if not self.load_pretrained_model():
+            self.create_pretrained_model()
+    
+    def calculate_entropy(self, data: bytes) -> float:
+        """حساب الإنتروبيا (العشوائية) للبيانات"""
+        if len(data) == 0:
+            return 0
+        
+        byte_counts = [0] * 256
+        for byte in data:
+            byte_counts[byte] += 1
+        
+        entropy = 0
+        data_len = len(data)
+        for count in byte_counts:
+            if count > 0:
+                probability = count / data_len
+                entropy -= probability * math.log2(probability)
+        
+        return entropy
+    
+    def is_base64_encoded(self, data: bytes) -> bool:
+        """التحقق من كون البيانات مشفرة بـ base64"""
+        try:
+            if len(data) % 4 == 0 and len(data) > 0:
+                decoded = base64.b64decode(data, validate=True)
+                # التحقق من أن البيانات تبدو مشفرة
+                return len(decoded) > 0 and len(decoded) != len(data)
+        except:
+            pass
+        return False
+    
+    def has_suspicious_extension(self, filename: str) -> bool:
+        """التحقق من الامتداد المشبوه"""
+        suspicious_extensions = [
+            ".shark", ".locked", ".encrypted", ".crypto", ".ransom", 
+            ".payme", ".fucku", ".crypt", ".vault", ".xxx", ".zzz",
+            ".aaa", ".abc", ".ccc", ".vvv", ".xyz", ".xtbl", ".cerber",
+            ".locky", ".zepto", ".thor", ".aesir", ".odin", ".shit",
+            ".fuck", ".cryptolocker", ".cryptowall", ".teslacrypt"
+        ]
+        return any(filename.lower().endswith(ext) for ext in suspicious_extensions)
+    
+    def calculate_readability_ratio(self, data: bytes) -> float:
+        """حساب نسبة قابلية القراءة"""
+        if len(data) == 0:
+            return 0
+        
+        printable_chars = sum(1 for byte in data if 32 <= byte <= 126)
+        return printable_chars / len(data)
+    
+    def calculate_compression_ratio(self, data: bytes) -> float:
+        """حساب نسبة الضغط"""
+        try:
+            import zlib
+            if len(data) == 0:
+                return 0
+            compressed = zlib.compress(data)
+            return len(compressed) / len(data)
+        except:
+            return 1.0
+    
+    def extract_features(self, file_path: str) -> List[float]:
+        """استخراج الخصائص من الملف"""
+        try:
+            # قراءة الملف
+            with open(file_path, 'rb') as f:
+                data = f.read(2048)  # قراءة أول 2048 بايت
+            
+            if len(data) == 0:
+                return [0] * 10
+            
+            features = []
+            
+            # 1. الإنتروبيا
+            entropy = self.calculate_entropy(data)
+            features.append(entropy)
+            
+            # 2. هل البيانات مشفرة بـ base64
+            is_base64 = 1 if self.is_base64_encoded(data) else 0
+            features.append(is_base64)
+            
+            # 3. هل الامتداد مشبوه
+            has_suspicious_ext = 1 if self.has_suspicious_extension(file_path) else 0
+            features.append(has_suspicious_ext)
+            
+            # 4. حجم الملف (مقياس لوغاريتمي)
+            file_size = os.path.getsize(file_path)
+            log_size = math.log10(file_size + 1)
+            features.append(log_size)
+            
+            # 5. نسبة قابلية القراءة
+            readability = self.calculate_readability_ratio(data)
+            features.append(readability)
+            
+            # 6. نسبة البايتات الصفرية
+            zero_bytes = sum(1 for byte in data if byte == 0)
+            zero_ratio = zero_bytes / len(data) if len(data) > 0 else 0
+            features.append(zero_ratio)
+            
+            # 7. نسبة الضغط
+            compression_ratio = self.calculate_compression_ratio(data)
+            features.append(compression_ratio)
+            
+            # 8. تنوع البايتات
+            unique_bytes = len(set(data))
+            byte_diversity = unique_bytes / 256
+            features.append(byte_diversity)
+            
+            # 9. متوسط قيمة البايت
+            avg_byte_value = sum(data) / len(data) if len(data) > 0 else 0
+            features.append(avg_byte_value)
+            
+            # 10. الانحراف المعياري للبايتات
+            if len(data) > 1:
+                mean_val = avg_byte_value
+                variance = sum((byte - mean_val) ** 2 for byte in data) / len(data)
+                std_dev = math.sqrt(variance)
+            else:
+                std_dev = 0
+            features.append(std_dev)
+            
+            return features
+            
+        except Exception as e:
+            logging.error(f"خطأ في استخراج الخصائص من {file_path}: {e}")
+            return [0] * 10
+    
+    def create_pretrained_model(self):
+        """إنشاء نموذج مدرب مسبقاً باستخدام Isolation Forest"""
+        try:
+            logging.info("إنشاء نموذج مدرب مسبقاً...")
+            
+            # إنشاء بيانات تدريب محاكاة للملفات الآمنة
+            safe_samples = []
+            
+            # ملفات نصية عادية
+            for _ in range(1000):
+                entropy = np.random.normal(4.5, 1.0)  # إنتروبيا منخفضة
+                is_base64 = 0  # ليس base64
+                has_suspicious_ext = 0  # امتداد عادي
+                log_size = np.random.normal(4.0, 1.5)  # حجم متوسط
+                readability = np.random.normal(0.8, 0.1)  # قابلية قراءة عالية
+                zero_ratio = np.random.normal(0.1, 0.05)  # نسبة صفرية منخفضة
+                compression_ratio = np.random.normal(0.6, 0.2)  # نسبة ضغط جيدة
+                byte_diversity = np.random.normal(0.3, 0.1)  # تنوع متوسط
+                avg_byte_value = np.random.normal(100, 30)  # متوسط قيمة البايت
+                std_dev = np.random.normal(50, 15)  # انحراف معياري
+                
+                safe_samples.append([
+                    entropy, is_base64, has_suspicious_ext, log_size, readability,
+                    zero_ratio, compression_ratio, byte_diversity, avg_byte_value, std_dev
+                ])
+            
+            # ملفات صور وفيديو
+            for _ in range(500):
+                entropy = np.random.normal(7.2, 0.5)  # إنتروبيا عالية طبيعية
+                is_base64 = 0
+                has_suspicious_ext = 0
+                log_size = np.random.normal(5.5, 1.0)  # حجم كبير
+                readability = np.random.normal(0.1, 0.05)  # قابلية قراءة منخفضة طبيعية
+                zero_ratio = np.random.normal(0.05, 0.02)
+                compression_ratio = np.random.normal(0.9, 0.1)  # ضغط عالي
+                byte_diversity = np.random.normal(0.8, 0.1)  # تنوع عالي
+                avg_byte_value = np.random.normal(128, 40)
+                std_dev = np.random.normal(70, 20)
+                
+                safe_samples.append([
+                    entropy, is_base64, has_suspicious_ext, log_size, readability,
+                    zero_ratio, compression_ratio, byte_diversity, avg_byte_value, std_dev
+                ])
+            
+            X_safe = np.array(safe_samples)
+            
+            # تطبيع البيانات
+            self.scaler = StandardScaler()
+            X_safe_scaled = self.scaler.fit_transform(X_safe)
+            
+            # إنشاء نموذج Isolation Forest
+            # هذا النموذج يتعلم من الملفات الآمنة ويكتشف الشاذ منها
+            self.model = IsolationForest(
+                contamination=0.1,  # نسبة التلوث المتوقعة
+                random_state=42,
+                n_estimators=100
+            )
+            
+            # تدريب النموذج على الملفات الآمنة فقط
+            self.model.fit(X_safe_scaled)
+            
+            self.is_loaded = True
+            
+            # حفظ النموذج
+            self.save_model()
+            
+            logging.info("تم إنشاء النموذج المدرب مسبقاً بنجاح")
+            
+        except Exception as e:
+            logging.error(f"خطأ في إنشاء النموذج المدرب مسبقاً: {e}")
+            self.is_loaded = False
+    
+    def save_model(self):
+        """حفظ النموذج"""
+        try:
+            model_data = {
+                'model': self.model,
+                'scaler': self.scaler,
+                'is_loaded': self.is_loaded,
+                'model_type': 'IsolationForest'
+            }
+            
+            with open(self.model_path, 'wb') as f:
+                pickle.dump(model_data, f)
+            
+            logging.info(f"تم حفظ النموذج في {self.model_path}")
+            
+        except Exception as e:
+            logging.error(f"خطأ في حفظ النموذج: {e}")
+    
+    def load_pretrained_model(self):
+        """تحميل النموذج المدرب مسبقاً"""
+        try:
+            if os.path.exists(self.model_path):
+                with open(self.model_path, 'rb') as f:
+                    model_data = pickle.load(f)
+                
+                self.model = model_data['model']
+                self.scaler = model_data['scaler']
+                self.is_loaded = model_data['is_loaded']
+                
+                logging.info(f"تم تحميل النموذج المدرب مسبقاً من {self.model_path}")
+                return True
+            
+        except Exception as e:
+            logging.error(f"خطأ في تحميل النموذج المدرب مسبقاً: {e}")
+        
+        return False
+    
+    def predict(self, file_path: str) -> Tuple[str, float]:
+        """التنبؤ بحالة الملف"""
+        try:
+            if not self.is_loaded:
+                return "Safe", 0.0
+            
+            # استخراج الخصائص
+            features = self.extract_features(file_path)
+            features_array = np.array([features])
+            
+            # تطبيع الخصائص
+            features_scaled = self.scaler.transform(features_array)
+            
+            # التنبؤ باستخدام Isolation Forest
+            prediction = self.model.predict(features_scaled)[0]
+            anomaly_score = self.model.decision_function(features_scaled)[0]
+            
+            # تحويل النتيجة
+            if prediction == -1:  # شاذ (مشبوه)
+                status = "Infected"
+                # تحويل anomaly_score إلى نسبة ثقة
+                confidence = min(abs(anomaly_score) * 2, 1.0)
+            else:  # طبيعي (آمن)
+                status = "Safe"
+                confidence = min(anomaly_score * 2, 1.0)
+            
+            # التأكد من أن الثقة في النطاق الصحيح
+            confidence = max(0.0, min(1.0, confidence))
+            
+            return status, confidence
+            
+        except Exception as e:
+            logging.error(f"خطأ في التنبؤ للملف {file_path}: {e}")
+            return "Safe", 0.0
+    
+    def get_model_info(self) -> Dict[str, any]:
+        """الحصول على معلومات النموذج"""
+        if not self.is_loaded:
+            return {"status": "not_loaded"}
+        
+        return {
+            "status": "loaded",
+            "model_type": "IsolationForest",
+            "contamination": self.model.contamination if hasattr(self.model, 'contamination') else 0.1,
+            "n_estimators": self.model.n_estimators if hasattr(self.model, 'n_estimators') else 100,
+            "features_count": 10
+        }
+    
+    def analyze_file_detailed(self, file_path: str) -> Dict[str, any]:
+        """تحليل مفصل للملف"""
+        try:
+            features = self.extract_features(file_path)
+            status, confidence = self.predict(file_path)
+            
+            feature_names = [
+                'entropy', 'is_base64', 'has_suspicious_ext', 'log_size', 
+                'readability', 'zero_ratio', 'compression_ratio', 
+                'byte_diversity', 'avg_byte_value', 'std_dev'
+            ]
+            
+            analysis = {
+                'file_path': file_path,
+                'status': status,
+                'confidence': confidence,
+                'features': dict(zip(feature_names, features)),
+                'risk_factors': []
+            }
+            
+            # تحديد عوامل الخطر
+            if features[0] > 7.5:  # entropy
+                analysis['risk_factors'].append('High entropy (possible encryption)')
+            
+            if features[1] == 1:  # is_base64
+                analysis['risk_factors'].append('Base64 encoded content')
+            
+            if features[2] == 1:  # has_suspicious_ext
+                analysis['risk_factors'].append('Suspicious file extension')
+            
+            if features[4] < 0.3:  # readability
+                analysis['risk_factors'].append('Low readability (binary content)')
+            
+            if features[6] > 0.95:  # compression_ratio
+                analysis['risk_factors'].append('High compression resistance')
+            
+            return analysis
+            
+        except Exception as e:
+            logging.error(f"خطأ في التحليل المفصل للملف {file_path}: {e}")
+            return {
+                'file_path': file_path,
+                'status': 'Error',
+                'confidence': 0.0,
+                'error': str(e)
+            }
+
+
+# مثال على الاستخدام
+if __name__ == "__main__":
+    # إنشاء النموذج
+    detector = PretrainedRansomwareDetector()
+    
+    # اختبار النموذج
+    if detector.is_loaded:
+        print("النموذج المدرب مسبقاً جاهز للاستخدام")
+        
+        # عرض معلومات النموذج
+        info = detector.get_model_info()
+        print("معلومات النموذج:")
+        for key, value in info.items():
+            print(f"  {key}: {value}")
+    else:
+        print("فشل في تحميل النموذج المدرب مسبقاً")
+
+
+.encrypted

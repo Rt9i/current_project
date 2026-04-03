@@ -1,0 +1,25 @@
+
+# تفعيل Google Drive API
+# 1. ادخل الرابط التالي في المتصفح:
+# https://console.developers.google.com/apis/api/drive.googleapis.com/overview
+
+# 2. اضغط على "Enable API"
+
+# 3. انتقل إلى:
+# https://console.developers.google.com/apis/credentials
+
+# 4. اختر مشروعك وقم بتحميل credentials.json
+
+# 5. تأكد من إضافة النطاقات التالية:
+# - https://www.googleapis.com/auth/drive
+# - https://www.googleapis.com/auth/drive.file
+
+print("Google Drive API activation instructions:")
+print("1. Visit: https://console.developers.google.com/apis/api/drive.googleapis.com/overview")
+print("2. Click 'Enable API'")
+print("3. Go to: https://console.developers.google.com/apis/credentials")
+print("4. Download credentials.json")
+print("5. Ensure the following scopes are enabled:")
+print("   - https://www.googleapis.com/auth/drive")
+print("   - https://www.googleapis.com/auth/drive.file")
+        

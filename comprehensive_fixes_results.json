@@ -1,0 +1,8 @@
+{
+  "Database Errors": true,
+  "Google Drive API": true,
+  "Missing Methods": true,
+  "YARA Rules": true,
+  "SSL Errors": true,
+  "VENV Activation": true
+}

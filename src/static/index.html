@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ransomware Protection System - Windows Edition</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-brand">
+            <i class="fas fa-shield-virus"></i>
+            <span>Ransomware Protection System</span>
+        </div>
+        <div class="nav-actions">
+            <div class="system-status" id="systemStatus">
+                <span class="status-indicator offline"></span>
+                <span>System Offline</span>
+            </div>
+            <div class="user-profile">
+                <i class="fas fa-user-circle"></i>
+                <span>admin@windows</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <ul>
+                    <li class="nav-item active" data-page="dashboard">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Dashboard</span>
+                    </li>
+                    <li class="nav-item" data-page="files">
+                        <i class="fas fa-file-alt"></i>
+                        <span>Files</span>
+                    </li>
+                    <li class="nav-item" data-page="alerts">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>Alerts</span>
+                        <span class="badge" id="alertsBadge">0</span>
+                    </li>
+                    <li class="nav-item" data-page="recovery">
+                        <i class="fas fa-undo"></i>
+                        <span>Recovery</span>
+                    </li>
+                    <li class="nav-item" data-page="ai-status">
+                        <i class="fas fa-brain"></i>
+                        <span>AI Status</span>
+                    </li>
+                    <li class="nav-item" data-page="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </li>
+                    <li class="nav-item" data-page="reports">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Reports</span>
+                    </li>
+                    <li class="nav-item" data-page="system-status">
+                        <i class="fas fa-server"></i>
+                        <span>System Status</span>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+          <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div class="page active" id="dashboard">
+                <div class="page-header">
+                    <h1>Dashboard</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="startProtection">
+                            <i class="fas fa-play"></i>
+                            Start Protection
+                        </button>
+                        <button class="btn btn-warning" id="pauseProtection" style="display: none;">
+                            <i class="fas fa-pause"></i>
+                            Pause Protection
+                        </button>
+                        <button class="btn btn-success" id="resumeProtection" style="display: none;">
+                            <i class="fas fa-play"></i>
+                            Resume Protection
+                        </button>
+                        <button class="btn btn-danger" id="stopProtection" style="display: none;">
+                            <i class="fas fa-stop"></i>
+                            Stop Protection
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card safe">
+                        <div class="stat-icon">
+                            <i class="fas fa-shield-check"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="safeFiles">0</h3>
+                            <p>Safe Files</p>
+                        </div>
+                    </div>
+                    <div class="stat-card infected">
+                        <div class="stat-icon">
+                            <i class="fas fa-virus"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="infectedFiles">0</h3>
+                            <p>Infected Files</p>
+                        </div>
+                    </div>
+                    <div class="stat-card quarantined">
+                        <div class="stat-icon">
+                            <i class="fas fa-lock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="quarantinedFiles">0</h3>
+                            <p>Quarantined Files</p>
+                        </div>
+                    </div>
+                    <div class="stat-card attacks">
+                        <div class="stat-icon">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="detectedAttacks">0</h3>
+                            <p>Detected Attacks</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dashboard Grid -->
+                <div class="dashboard-grid">
+                    <!-- Attack Timeline Chart -->
+                    <div class="chart-container">
+                        <h3>Attack Timeline</h3>
+                        <canvas id="attackChart"></canvas>
+                    </div>
+
+                    <!-- Recent Files -->
+                    <div class="recent-files">
+                        <h3>Recent Files</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Filename</th>
+                                        <th>Status</th>
+                                        <th>Time</th>
+                                        <th>AI Confidence</th>
+                                        <th>SHA-256</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-files-tbody">
+                                    <!-- Dynamic content -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Backup & Restore Management -->
+                <div class="backup-restore-section">
+                    <h3>Backup & Restore Management</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>File Name</th>
+                                    <th>Metadata (Path & Time)</th>
+                                    <th>SHA-256</th>
+                                    <th>Current Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backup-restore-tbody">
+                                <!-- Dynamic content -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Files Page -->
+            <div class="page" id="files">
+                <div class="page-header">
+                    <h1>File Analysis</h1>
+                </div>
+
+                <!-- File Analyzer -->
+                <div class="file-analyzer">
+                    <h3>File Analyzer</h3>
+                    <div class="analyzer-form">
+                        <input type="text" id="filePathInput" placeholder="Enter file path (e.g., /home/kali/Downloads/file.exe)">
+                        <button class="btn btn-secondary" id="browseFileToAnalyze">
+                            <i class="fas fa-folder"></i>
+                            Browse
+                        </button>
+                        <button class="btn btn-primary" id="analyzeFile">
+                            <i class="fas fa-search"></i>
+                            Analyze File
+                        </button>
+                    </div>
+                    <div class="analysis-result" id="analysisResult" style="display: none;">
+                        <!-- Analysis results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Page -->
+            <div class="page" id="alerts">
+                <div class="page-header">
+                    <h1>Security Alerts</h1>
+					     <div class="header-actions">
+                        <button class="btn btn-primary" id="testAlert">
+                            <i class="fas fa-bell"></i>
+                            Test Alert
+                        </button>
+                    </div>
+                </div>
+                <div class="alerts-content">
+                    <div id="alertsList">
+                        <!-- Dynamic alerts content -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recovery Page -->
+            <div class="page" id="recovery">
+                <div class="page-header">
+                    <h1>Recovery & Backup</h1>
+                </div>
+
+                <!-- Recovery Strategy -->
+                <div class="recovery-strategy-section">
+                    <h3>Recovery Strategy</h3>
+                    <div class="strategy-options">
+                        <div class="strategy-card" data-strategy="local_only">
+                            <i class="fas fa-hdd"></i>
+                            <h4>Local Storage Only</h4>
+                            <p>Store quarantined files locally on this machine</p>
+                        </div>
+                        <div class="strategy-card" data-strategy="google_drive_only">
+                            <i class="fab fa-google-drive"></i>
+                            <h4>Google Drive Only</h4>
+                            <p>Store quarantined files on Google Drive</p>
+                        </div>
+                        <div class="strategy-card selected" data-strategy="both">
+                            <i class="fas fa-sync-alt"></i>
+                            <h4>Both (Recommended)</h4>
+                            <p>Store files locally and backup to Google Drive</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Local Storage Configuration -->
+                <div class="local-storage-section">
+                    <h3>Local Storage Configuration</h3>
+                    <div class="storage-config">
+                        <div class="path-input-group">
+                            <label for="localStoragePath">Local Storage Path:</label>
+                            <div class="input-with-button">
+                                <input type="text" id="localStoragePath" placeholder="/var/backups/ransomware" value="/var/backups/ransomware" />
+                                <button class="btn btn-secondary" id="browseLocalStoragePath">
+                                    <i class="fas fa-folder"></i>
+                                    Browse
+                                </button>
+                                <button class="btn btn-primary" id="addLocalStoragePath">
+                                    <i class="fas fa-plus"></i>
+                                    Add Path
+                                </button>
+                            </div>
+                        </div>
+                        <div class="path-input-group">
+                            <label for="quarantinePath">Quarantine Path:</label>
+                            <div class="input-with-button">
+                                <input type="text" id="quarantinePath" placeholder="/var/quarantine" value="/var/quarantine" />
+                                <button class="btn btn-secondary" id="browseQuarantinePath">
+                                    <i class="fas fa-folder"></i>
+                                    Browse
+                                </button>
+                                <button class="btn btn-primary" id="addQuarantinePath">
+                                    <i class="fas fa-plus"></i>
+                                    Add Path
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Google Drive Configuration -->
+                <div class="google-drive-section">
+                    <h3>Google Drive Configuration</h3>
+                    <div class="drive-status" id="driveStatus">
+                        <div class="status-indicator">
+                            <span class="status-dot offline"></span>
+                            <span>Not Connected</span>
+                        </div>
+                    </div>
+                    <div class="drive-controls">
+                        <button class="btn btn-success" id="connectGoogleDrive">
+                            <i class="fab fa-google"></i>
+                            Connect to Google Drive
+                        </button>
+                        <button class="btn btn-primary" id="openGoogleDrive" style="display: none;">
+                            <i class="fab fa-google-drive"></i>
+                            View Google Drive Backups
+                        </button>
+                        <button class="btn btn-secondary" id="disconnectGoogleDrive" style="display: none;">
+                            <i class="fas fa-unlink"></i>
+                            Disconnect
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quarantined Files Management -->
+                <div class="quarantine-section">
+                    <h3>Quarantined Files</h3>
+                    <div class="quarantine-controls">
+                        <button class="btn btn-info" id="refreshQuarantine">
+                            <i class="fas fa-sync"></i>
+                            Refresh List
+                        </button>
+                        <button class="btn btn-primary" id="openLocalQuarantine">
+                            <i class="fas fa-folder-open"></i>
+                            Open Local Quarantine
+                        </button>
+                    </div>
+                    <div class="quarantine-list" id="quarantineList">
+                        <!-- Dynamic quarantine content -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Status Page -->
+            <div class="page" id="ai-status">
+                <div class="page-header">
+                    <h1>AI Model Status</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="reloadAI">
+                            <i class="fas fa-sync"></i>
+                            Reload Model
+                        </button>
+                    </div>
+                </div>
+                <div class="ai-content">
+                    <div class="ai-details" id="aiDetails">
+                        <!-- AI model details will be populated here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div class="page" id="settings">
+                <div class="page-header">
+                    <h1>System Settings</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="saveSettings">
+                            <i class="fas fa-save"></i>
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-content">
+                    <!-- Protection Settings Section -->
+                    <div class="settings-section">
+                        <h3>Protection Settings</h3>
+                        <div class="protection-settings">
+                            <div class="setting-item">
+                                <label for="realTimeProtection">
+                                    <input type="checkbox" id="realTimeProtection" checked>
+                                    Enable Real-time Protection
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label for="autoQuarantine">
+                                    <input type="checkbox" id="autoQuarantine" checked>
+                                    Auto-quarantine Infected Files
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label for="scanOnAccess">
+                                    <input type="checkbox" id="scanOnAccess">
+                                    Scan Files on Access
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label for="scanSchedule">Scan Schedule:</label>
+                                <select id="scanSchedule">
+                                    <option value="hourly">Every Hour</option>
+                                    <option value="daily" selected>Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="manual">Manual Only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Alert Settings Section -->
+                    <div class="settings-section">
+                        <h3>Alert Settings</h3>
+                        <div class="alert-settings">
+                            <div class="setting-item">
+                                <label for="enableAlerts">
+                                    <input type="checkbox" id="enableAlerts" checked>
+                                    Enable Security Alerts
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label for="alertLevel">Alert Level:</label>
+                                <select id="alertLevel">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="critical">Critical Only</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label for="emailNotifications">
+                                    <input type="checkbox" id="emailNotifications">
+                                    Email Notifications
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label for="soundAlerts">
+                                    <input type="checkbox" id="soundAlerts" checked>
+                                    Sound Alerts
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monitored Paths Section -->
+                    <div class="settings-section">
+                        <h3>Monitored Paths</h3>
+                        <div class="monitored-paths-controls">
+                            <div class="input-with-button">
+                                <input type="text" id="newMonitoredPath" placeholder="Enter path to monitor (e.g., /home/kali/Documents)">
+                                <button class="btn btn-secondary" id="browseMonitoredPath">
+                                    <i class="fas fa-folder"></i>
+                                    Browse
+                                </button>
+                                <button class="btn btn-primary" id="addMonitoredPath">
+                                    <i class="fas fa-plus"></i>
+                                    Add Path
+                                </button>
+                            </div>
+                        </div>
+                        <div class="monitored-paths" id="monitoredPaths">
+                            <!-- Dynamic monitored paths content -->
+                        </div>
+                    </div>
+
+                    <!-- Select Important Files for Backup Section -->
+                    <div class="settings-section">
+                        <div class="settings-header">
+                            <h3>Select Important Files for Backup</h3>
+                            <button class="btn btn-primary" id="save-settings-btn">
+                                <i class="fas fa-save"></i> 
+                                Save Changes
+                            </button>
+                        </div>
+                        <div class="monitored-paths-container" id="monitored-paths-container"></div>
+                        <div class="files-display-section">
+                            <div class="files-toolbar">
+                                <div class="search-bar">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="search-input" placeholder="Search for a file...">
+                                </div>
+                                <div class="toolbar-actions">
+                                    <button class="btn btn-secondary" id="select-all-btn">
+                                        <i class="fas fa-check-square"></i> 
+                                        Select All
+                                    </button>
+                                    <button class="btn btn-secondary" id="deselect-all-btn">
+                                        <i class="far fa-square"></i> 
+                                        Deselect All
+                                    </button>
+                                </div>
+                            </div>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th><input type="checkbox" id="select-all-header-checkbox"></th>
+                                        <th>Name</th>
+                                        <th>Date Modified</th>
+                                        <th>Type</th>
+                                        <th>Size</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="filesTableBody">
+                                    <!-- Dynamic content -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports Page -->
+            <div class="page" id="reports">
+                <div class="page-header">
+                    <h1>System Reports</h1>
+                </div>
+                <div class="reports-content">
+                    <!-- Reports content will be added here -->
+                </div>
+            </div>
+
+            <!-- System Status Page -->
+            <div class="page" id="system-status">
+                <div class="page-header">
+                    <h1>System Status</h1>
+                </div>
+                <div class="system-status-content">
+                    <!-- System status content will be added here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Processing...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div class="toast-content">
+            <i class="toast-icon"></i>
+            <span class="toast-message"></span>
+        </div>
+    </div>
+
+    <!-- Toast Notification for Settings -->
+    <div class="toast-notification" id="toast-notification">
+        <i class="fas fa-check-circle"></i>
+        <span id="toast-message-settings">Settings saved successfully!</span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+

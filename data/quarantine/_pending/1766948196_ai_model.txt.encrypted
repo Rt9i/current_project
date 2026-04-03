@@ -1,0 +1,498 @@
+# ransomware_protection_system\src\ai_model.py اسم المف 
+
+import os
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score, roc_auc_score
+from sklearn.preprocessing import StandardScaler
+import joblib
+import logging
+import math
+import base64
+from typing import Tuple, List, Dict
+import datetime
+import pefile
+from concurrent.futures import ThreadPoolExecutor # For parallel processing
+import sqlite3 # For logging scan results
+
+# إعداد التسجيل
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class RansomwareAIModel:
+    """نموذج الذكاء الاصطناعي لكشف فيروسات الفدية"""
+    
+    def __init__(self, model_path: str = "ransomware_model.pkl", db_path: str = "scan_results.db"):
+        self.model_path = model_path
+        self.db_path = db_path
+        self.model = None
+        self.scaler = None
+        self.is_trained = False
+        self.feature_names = [
+            "entropy_start", "entropy_middle", "entropy_end",
+            "is_base64", "has_suspicious_ext", "log_size", "readability", "zero_ratio",
+            "mod_time_diff", # New feature: modification time difference
+            *[f"byte_hist_{i}" for i in range(256)], # New feature: byte histogram
+            "pe_sections", "pe_imports", "pe_exports", "pe_resources" # New PE features
+        ]
+        
+        # محاولة تحميل النموذج المحفوظ
+        self.load_model()
+        
+        # إذا لم يكن هناك نموذج محفوظ، إنشاء وتدريب نموذج جديد
+        if not self.is_trained:
+            self.create_and_train_model()
+
+        # تهيئة قاعدة بيانات السجلات
+        self._init_db()
+    
+    def _init_db(self):
+        """تهيئة قاعدة بيانات SQLite لتسجيل نتائج الفحص"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                """CREATE TABLE IF NOT EXISTS scan_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_path TEXT NOT NULL,
+                    scan_time TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    confidence REAL NOT NULL
+                )"""
+            )
+            conn.commit()
+            conn.close()
+            logging.info(f"تم تهيئة قاعدة بيانات السجلات في {self.db_path}")
+        except Exception as e:
+            logging.error(f"خطأ في تهيئة قاعدة بيانات السجلات: {e}")
+
+    def _log_scan_result(self, file_path: str, status: str, confidence: float):
+        """تسجيل نتيجة الفحص في قاعدة البيانات"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            scan_time = datetime.datetime.now().isoformat()
+            cursor.execute(
+                "INSERT INTO scan_logs (file_path, scan_time, status, confidence) VALUES (?, ?, ?, ?)",
+                (file_path, scan_time, status, confidence)
+            )
+            conn.commit()
+            conn.close()
+            logging.info(f"تم تسجيل نتيجة الفحص للملف {file_path}: {status} بثقة {confidence:.2f}")
+        except Exception as e:
+            logging.error(f"خطأ في تسجيل نتيجة الفحص للملف {file_path}: {e}")
+
+    def calculate_entropy(self, data: bytes) -> float:
+        """حساب الإنتروبيا (العشوائية) للبيانات"""
+        if len(data) == 0:
+            return 0
+        
+        # حساب تكرار كل بايت
+        byte_counts = [0] * 256
+        for byte in data:
+            byte_counts[byte] += 1
+        
+        # حساب الإنتروبيا
+        entropy = 0
+        data_len = len(data)
+        for count in byte_counts:
+            if count > 0:
+                probability = count / data_len
+                entropy -= probability * math.log2(probability)
+        
+        return entropy
+    
+    def get_byte_histogram(self, data: bytes) -> List[int]:
+        """حساب توزيع البايتات (histogram)"""
+        hist = [0] * 256
+        if len(data) == 0:
+            return hist
+        for byte in data:
+            hist[byte] += 1
+        return hist
+
+    def is_base64_encoded(self, data: bytes) -> bool:
+        """التحقق من كون البيانات مشفرة بـ base64"""
+        try:
+            if len(data) % 4 == 0:
+                decoded = base64.b64decode(data, validate=True)
+                return len(decoded) != len(data)
+        except:
+            pass
+        return False
+    
+    def has_suspicious_extension(self, filename: str) -> bool:
+        """التحقق من الامتداد المشبوه"""
+        suspicious_extensions = [
+            ".shark", ".locked", ".encrypted", ".crypto", ".ransom", 
+            ".payme", ".fucku", ".crypt", ".vault", ".xxx", ".zzz",
+            ".aaa", ".abc", ".ccc", ".vvv", ".xyz", ".xtbl", ".cerber"
+        ]
+        return any(filename.lower().endswith(ext) for ext in suspicious_extensions)
+    
+    def calculate_readability_ratio(self, data: bytes) -> float:
+        """حساب نسبة قابلية القراءة"""
+        if len(data) == 0:
+            return 0
+        
+        printable_chars = sum(1 for byte in data if 32 <= byte <= 126)
+        return printable_chars / len(data)
+    
+    def extract_pe_features(self, file_path: str) -> Tuple[int, int, int, int]:
+        """استخراج خصائص PE من الملفات التنفيذية"""
+        try:
+            pe = pefile.PE(file_path)
+            num_sections = len(pe.sections)
+            num_imports = len(pe.DIRECTORY_ENTRY_IMPORT) if hasattr(pe, 'DIRECTORY_ENTRY_IMPORT') else 0
+            num_exports = len(pe.DIRECTORY_ENTRY_EXPORT.symbols) if hasattr(pe, 'DIRECTORY_ENTRY_EXPORT') else 0
+            num_resources = len(pe.DIRECTORY_ENTRY_RESOURCE.entries) if hasattr(pe, 'DIRECTORY_ENTRY_RESOURCE') else 0
+            return num_sections, num_imports, num_exports, num_resources
+        except pefile.PEFormatError:
+            return 0, 0, 0, 0 # Not a PE file or corrupted
+        except Exception as e:
+            logging.warning(f"خطأ في استخراج خصائص PE من {file_path}: {e}")
+            return 0, 0, 0, 0
+
+    def extract_features(self, file_path: str) -> List[float]:
+        """استخراج الخصائص من الملف"""
+        try:
+            file_size = os.path.getsize(file_path)
+            
+            # قراءة أجزاء متعددة من الملف
+            with open(file_path, 'rb') as f:
+                # قراءة أول 1024 بايت
+                data_start = f.read(1024)
+                
+                # قراءة 1024 بايت من المنتصف
+                f.seek(max(0, file_size // 2 - 512)) # Seek to middle - 512 bytes
+                data_middle = f.read(1024)
+                
+                # قراءة 1024 بايت من النهاية
+                f.seek(max(0, file_size - 1024)) # Seek to end - 1024 bytes
+                data_end = f.read(1024)
+            
+            # الخصائص المستخرجة
+            features = []
+            
+            # 1. الإنتروبيا (بداية، منتصف، نهاية)
+            features.append(self.calculate_entropy(data_start))
+            features.append(self.calculate_entropy(data_middle))
+            features.append(self.calculate_entropy(data_end))
+            
+            # 2. هل البيانات مشفرة بـ base64 (نستخدم بداية الملف)
+            is_base64 = 1 if self.is_base64_encoded(data_start) else 0
+            features.append(is_base64)
+            
+            # 3. هل الامتداد مشبوه
+            has_suspicious_ext = 1 if self.has_suspicious_extension(file_path) else 0
+            features.append(has_suspicious_ext)
+            
+            # 4. حجم الملف (مقياس لوغاريتمي)
+            log_size = math.log10(file_size + 1)
+            features.append(log_size)
+            
+            # 5. نسبة قابلية القراءة (نستخدم بداية الملف)
+            readability = self.calculate_readability_ratio(data_start)
+            features.append(readability)
+            
+            # 6. نسبة البايتات الصفرية (نستخدم بداية الملف)
+            zero_bytes = sum(1 for byte in data_start if byte == 0)
+            zero_ratio = zero_bytes / len(data_start) if len(data_start) > 0 else 0
+            features.append(zero_ratio)
+
+            # 7. توقيت التعديلات (modification time)
+            mod_time = os.path.getmtime(file_path)
+            # نحسب الفرق بين وقت التعديل الحالي ووقت التعديل الأولي (مثلاً، وقت إنشاء الملف أو وقت مرجعي)
+            # هنا، سنستخدم فرقًا زمنيًا كبيرًا لتمثيل 
+            mod_time_diff = (datetime.datetime.now().timestamp() - mod_time) / (60 * 60 * 24) # Age in days
+            features.append(mod_time_diff)
+
+            # 8. Byte Histogram (نستخدم بداية الملف)
+            byte_hist = self.get_byte_histogram(data_start)
+            features.extend(byte_hist)
+
+            # 9. PE Features
+            num_sections, num_imports, num_exports, num_resources = self.extract_pe_features(file_path)
+            features.extend([num_sections, num_imports, num_exports, num_resources])
+            
+            return features
+            
+        except Exception as e:
+            logging.error(f"خطأ في استخراج الخصائص من {file_path}: {e}")
+            # Return a list of zeros with the correct length for all features
+            return [0.0] * len(self.feature_names)
+    
+    def generate_training_data(self, num_samples=2000) -> Tuple[np.ndarray, np.ndarray]:
+        """توليد بيانات تدريب محاكاة أكثر واقعية"""
+        logging.info(f"توليد {num_samples} عينة تدريب محاكاة...")
+
+        num_features = len(self.feature_names)
+        safe_samples = []
+        infected_samples = []
+
+        # عينات للملفات الآمنة (50% من العينات)
+        for _ in range(num_samples // 2):
+            sample = [0.0] * num_features
+            # Entropy for safe files (lower, more structured, but can vary)
+            sample[self.feature_names.index("entropy_start")] = np.random.uniform(2.5, 6.5)
+            sample[self.feature_names.index("entropy_middle")] = np.random.uniform(2.5, 6.5)
+            sample[self.feature_names.index("entropy_end")] = np.random.uniform(2.5, 6.5)
+            sample[self.feature_names.index("is_base64")] = np.random.choice([0, 1], p=[0.95, 0.05]) # Very low chance of base64
+            sample[self.feature_names.index("has_suspicious_ext")] = 0
+            sample[self.feature_names.index("log_size")] = np.random.uniform(4.0, 8.5) # Larger files, more variance
+            sample[self.feature_names.index("readability")] = np.random.uniform(0.5, 0.99)
+            sample[self.feature_names.index("zero_ratio")] = np.random.uniform(0.005, 0.1)
+            sample[self.feature_names.index("mod_time_diff")] = np.random.uniform(60, 730) # Older files, wider range
+            
+            # Byte histogram for safe files (skewed towards printable ASCII, more varied)
+            hist_start_idx = self.feature_names.index("byte_hist_0")
+            for i in range(256):
+                if 32 <= i <= 126: # Printable ASCII
+                    sample[hist_start_idx + i] = np.random.randint(10, 60) # More frequent
+                else:
+                    sample[hist_start_idx + i] = np.random.randint(0, 15) # Less frequent
+
+            # PE features for safe files (e.g., common executables, more sections, more imports)
+            sample[self.feature_names.index("pe_sections")] = np.random.randint(4, 18)
+            sample[self.feature_names.index("pe_imports")] = np.random.randint(30, 300)
+            sample[self.feature_names.index("pe_exports")] = np.random.randint(0, 70)
+            sample[self.feature_names.index("pe_resources")] = np.random.randint(10, 150)
+            safe_samples.append(sample)
+        
+        # عينات للملفات المصابة (50% من العينات)
+        for _ in range(num_samples // 2):
+            sample = [0.0] * num_features
+            # Entropy for infected files (very high, close to max)
+            sample[self.feature_names.index("entropy_start")] = np.random.uniform(7.8, 7.99)
+            sample[self.feature_names.index("entropy_middle")] = np.random.uniform(7.8, 7.99)
+            sample[self.feature_names.index("entropy_end")] = np.random.uniform(7.8, 7.99)
+            sample[self.feature_names.index("is_base64")] = np.random.choice([0, 1], p=[0.1, 0.9]) # High chance of base64
+            sample[self.feature_names.index("has_suspicious_ext")] = np.random.choice([0, 1], p=[0.05, 0.95]) # High chance of suspicious extension
+            sample[self.feature_names.index("log_size")] = np.random.uniform(2.0, 7.0) # Varied size, but can be large if packed
+            sample[self.feature_names.index("readability")] = np.random.uniform(0.0, 0.1)
+            sample[self.feature_names.index("zero_ratio")] = np.random.uniform(0.0, 0.01)
+            sample[self.feature_names.index("mod_time_diff")] = np.random.uniform(0, 30) # Recently modified or new
+            
+            # Byte histogram for infected files (more uniform distribution for encrypted/packed data)
+            hist_start_idx = self.feature_names.index("byte_hist_0")
+            for i in range(256):
+                sample[hist_start_idx + i] = np.random.randint(0, 25) # More uniform distribution
+
+            # PE features for infected files (e.g., fewer sections, more imports for malicious APIs, fewer exports/resources)
+            sample[self.feature_names.index("pe_sections")] = np.random.randint(1, 7)
+            sample[self.feature_names.index("pe_imports")] = np.random.randint(100, 500)
+            sample[self.feature_names.index("pe_exports")] = np.random.randint(0, 10)
+            sample[self.feature_names.index("pe_resources")] = np.random.randint(0, 30)
+            infected_samples.append(sample)
+        
+        # دمج البيانات
+        X = np.array(safe_samples + infected_samples)
+        y = np.array([0] * len(safe_samples) + [1] * len(infected_samples))
+        
+        return X, y
+    
+    def create_and_train_model(self):
+        """إنشاء وتدريب النموذج"""
+        try:
+            logging.info("بدء إنشاء وتدريب نموذج الذكاء الاصطناعي...")
+            
+            # توليد بيانات التدريب
+            X, y = self.generate_training_data()
+            
+            # تقسيم البيانات
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y
+            )
+            
+            # تطبيع البيانات
+            self.scaler = StandardScaler()
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_test_scaled = self.scaler.transform(X_test)
+            
+            # تحسين المعاملات الفائقة باستخدام GridSearchCV
+            param_grid = {
+                'n_estimators': [100, 200, 300],
+                'max_depth': [10, 20, 30, None],
+                'min_samples_leaf': [1, 2, 4]
+            }
+            grid_search = GridSearchCV(
+                RandomForestClassifier(random_state=42, class_weight='balanced'),
+                param_grid, cv=5, n_jobs=-1, verbose=1, scoring='f1'
+                        )
+            grid_search.fit(X_train_scaled, y_train)
+            
+            self.model = grid_search.best_estimator_
+            logging.info(f"أفضل معاملات فائقة: {grid_search.best_params_}")
+            
+            # تقييم النموذج
+            y_pred = self.model.predict(X_test_scaled)
+            accuracy = accuracy_score(y_test, y_pred)
+            f1 = f1_score(y_test, y_pred)
+            roc_auc = roc_auc_score(y_test, self.model.predict_proba(X_test_scaled)[:, 1])
+            
+            logging.info(f"دقة النموذج: {accuracy:.2f}")
+            logging.info(f"F1-Score: {f1:.2f}")
+            logging.info(f"ROC-AUC: {roc_auc:.2f}")
+            logging.info("تقرير التصنيف:")
+            logging.info(classification_report(y_test, y_pred, target_names=["Safe", "Infected"]))
+            logging.info("مصفوفة الارتباك:\n" + str(confusion_matrix(y_test, y_pred)))
+            
+            self.is_trained = True
+            
+            # حفظ النموذج
+            self.save_model()
+            
+            logging.info("تم إنشاء وتدريب النموذج بنجاح")
+            
+        except Exception as e:
+            logging.error(f"خطأ في إنشاء وتدريب النموذج: {e}")
+            self.is_trained = False
+    
+    def save_model(self):
+        """حفظ النموذج"""
+        try:
+            model_data = {
+                'model': self.model,
+                'scaler': self.scaler,
+                'is_trained': self.is_trained,
+                'feature_names': self.feature_names # Save feature names
+            }
+            joblib.dump(model_data, self.model_path)
+            logging.info(f"تم حفظ النموذج في {self.model_path}")
+            
+        except Exception as e:
+            logging.error(f"خطأ في حفظ النموذج: {e}")
+    
+    def load_model(self):
+        """تحميل النموذج"""
+        if os.path.exists(self.model_path):
+            try:
+                model_data = joblib.load(self.model_path)
+                
+                # التحقق من صحة النموذج المحمل
+                if 'model' in model_data and hasattr(model_data['model'], 'predict') and \
+                   'scaler' in model_data and hasattr(model_data['scaler'], 'transform') and \
+                   'feature_names' in model_data:
+                    self.model = model_data['model']
+                    self.scaler = model_data['scaler']
+                    self.is_trained = model_data.get('is_trained', False)
+                    self.feature_names = model_data['feature_names']
+                    logging.info(f"تم تحميل النموذج من {self.model_path}")
+                else:
+                    logging.warning("ملف النموذج المحمل غير صالح أو تالف. سيتم إنشاء نموذج جديد.")
+                    self.is_trained = False
+
+            except Exception as e:
+                logging.error(f"خطأ في تحميل النموذج: {e}. سيتم إنشاء نموذج جديد.")
+                self.is_trained = False
+        else:
+            logging.info("لم يتم العثور على نموذج محفوظ. سيتم إنشاء نموذج جديد.")
+            self.is_trained = False
+
+    def predict(self, file_path: str, confidence_threshold_suspicious: float = 0.6, confidence_threshold_infected: float = 0.85) -> Tuple[str, float]:
+        """التنبؤ بحالة الملف (آمن، مشبوه، مصاب)"""
+        if not self.is_trained:
+            return "Model not trained", 0.0
+        
+        features = self.extract_features(file_path)
+        
+        # التحقق من صحة الميزات
+        if len(features) != len(self.feature_names):
+            logging.error(f"عدد الميزات المستخرجة ({len(features)}) لا يتطابق مع العدد المتوقع ({len(self.feature_names)}).")
+            return "Feature mismatch", 0.0
+        
+        features_scaled = self.scaler.transform([features])
+        
+        # الحصول على احتمالات التصنيف
+        probabilities = self.model.predict_proba(features_scaled)[0]
+        confidence_infected = probabilities[1] # احتمال أن يكون الملف مصابًا
+        
+        # تحديد الحالة بناءً على عتبات الثقة
+        if confidence_infected >= confidence_threshold_infected:
+            status = "Infected"
+            self.quarantine_file(file_path) # آلية الحماية: نقل الملف للحجر الصحي
+            self.send_alert(file_path, status, confidence_infected) # آلية الحماية: إرسال تنبيه
+        elif confidence_infected >= confidence_threshold_suspicious:
+            status = "Suspicious"
+            self.send_alert(file_path, status, confidence_infected) # آلية الحماية: إرسال تنبيه
+        else:
+            status = "Safe"
+        
+        # تسجيل نتيجة الفحص
+        self._log_scan_result(file_path, status, confidence_infected)
+        
+        return status, confidence_infected
+
+    def batch_predict(self, file_paths: List[str]) -> Dict[str, Tuple[str, float]]:
+        """فحص عدة ملفات بشكل متوازٍ"""
+        results = {}
+        with ThreadPoolExecutor() as executor:
+            # استخراج الخصائص بشكل متوازٍ
+            future_to_file = {executor.submit(self.extract_features, file_path): file_path for file_path in file_paths}
+            
+            for future in future_to_file:
+                file_path = future_to_file[future]
+                try:
+                    features = future.result()
+                    status, confidence = self.predict(file_path) # استخدام دالة predict للتنبؤ والتسجيل
+                    results[file_path] = (status, confidence)
+                except Exception as e:
+                    logging.error(f"خطأ في فحص الملف {file_path}: {e}")
+                    results[file_path] = ("Error", 0.0)
+        return results
+
+    def quarantine_file(self, file_path: str):
+        """(وهمي) نقل الملف إلى الحجر الصحي"""
+        # في بيئة إنتاجية، يجب تنفيذ هذه الدالة لنقل الملف إلى مجلد آمن
+        logging.warning(f"[QUARANTINE] تم اكتشاف ملف مشبوه: {file_path}. يجب نقله إلى الحجر الصحي.")
+
+    def send_alert(self, file_path: str, status: str, confidence: float):
+        """(وهمي) إرسال تنبيه"""
+        # في بيئة إنتاجية، يجب تنفيذ هذه الدالة لإرسال تنبيه عبر البريد الإلكتروني أو أي وسيلة أخرى
+        logging.warning(f"[ALERT] تم اكتشاف ملف {status} في {file_path} بثقة {confidence:.2f}")
+
+if __name__ == '__main__':
+    # إنشاء كائن من النموذج
+    ai_model = RansomwareAIModel()
+    
+    # اختبار على ملفات تجريبية
+    # إنشاء ملفات اختبار
+    with open("safe_test_file.txt", "w") as f:
+        f.write("This is a safe file with normal text content.")
+    
+    with open("suspicious_test_file.locked", "wb") as f:
+        f.write(os.urandom(1024)) # Random (high entropy) data
+    
+    # اختبار فردي
+    status, confidence = ai_model.predict("safe_test_file.txt")
+    print(f"حالة الملف \'safe_test_file.txt\' : {status} بثقة {confidence:.2f}")
+    
+    status, confidence = ai_model.predict("suspicious_test_file.locked")
+    print(f"حالة الملف \'suspicious_test_file.locked\' : {status} بثقة {confidence:.2f}")
+
+    # اختبار Batch Prediction
+    print("\nاختبار Batch Prediction:")
+    batch_files = []
+    for i in range(5):
+        safe_name = f"batch_safe_{i}.txt"
+        susp_name = f"batch_susp_{i}.locked"
+        with open(safe_name, "w") as f:
+            f.write("This is another safe file.")
+        with open(susp_name, "wb") as f:
+            f.write(os.urandom(2048))
+        batch_files.extend([safe_name, susp_name])
+
+    batch_results = ai_model.batch_predict(batch_files)
+    for file, (status, confidence) in batch_results.items():
+        print(f"حالة الملف \'{file}\' : {status} بثقة {confidence:.2f}")
+
+    # تنظيف ملفات الاختبار
+    os.remove("safe_test_file.txt")
+    os.remove("suspicious_test_file.locked")
+    for file in batch_files:
+        os.remove(file)
+
+
+
+.encrypted

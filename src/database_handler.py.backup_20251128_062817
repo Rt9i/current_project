@@ -1,0 +1,585 @@
+# ransomware_protection_system/src/database_handler.py
+# -*- coding: utf-8 -*-
+r"""
+DatabaseHandler - SQLite helper (thread-safe, batch writes, safe defaults)
+
+المزايا:
+- Thread-safe عبر أقفال RLock.
+- طابور كتابة بدُفعات مع Flusher بالخلفية (قابل للتهيئة count/interval).
+- إعادة المحاولة مع backoff في العمليات الحساسة.
+- استرجاع الكتابات الفاشلة إلى ملف recovery ثم إعادة تشغيلها لاحقًا.
+- سياق مدير (__enter__/__exit__) للإغلاق الآمن.
+- واجهات مريحة: insert_or_replace / batch_upsert / fetchone / fetchall.
+- دعم إعدادات PRAGMA (performance/safe).
+- متوافق مع main.py؛ لا يحتاج أي تعديل هناك.
+
+تحسينات توافق ويندوز:
+- اختيار مسار افتراضي مناسب لملف الاسترجاع داخل %ProgramData%\RPS\database عند عدم تمرير recovery_file.
+- تطبيع المسارات بشكل محايد للمنصة.
+- PRAGMA busy_timeout و wal_autocheckpoint لثبات أعلى على Windows/NTFS.
+
+ملاحظات:
+- لا يفرض مخطط جداول محدد، لكن main.py ينشئ جدول events تلقائيًا.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import json
+import time
+import sqlite3
+import threading
+from typing import Any, Dict, Iterable, List, Optional, Tuple
+from pathlib import Path
+from datetime import datetime
+
+# --- Logger مرن ---
+try:
+    from src.logger import get_logger  # تفضيل استيراد داخل الحزمة
+except Exception:
+    try:
+        from logger import get_logger  # تشغيل من الجذر
+    except Exception:
+        import logging
+        def get_logger(name: str):
+            logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+            return logging.getLogger(name)
+
+# --- Utils مرن (اختياري) ---
+try:
+    from src.utils import normalize_path
+except Exception:
+    try:
+        from utils import normalize_path
+    except Exception:
+        def normalize_path(p: str) -> str:
+            return os.path.abspath(os.path.expanduser(str(p)))
+
+log = get_logger(__name__)
+
+# ---------------- Helpers (Windows) ----------------
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+def _default_recovery_file() -> str:
+    r"""
+    يختار مسار افتراضي آمن لملف الاسترجاع باستخدام مسارات نسبية فقط:
+      - Always use relative path from project root: ./database/_db_failed_writes.json
+    """
+    # احسب المسار النسبي من مجلد المشروع
+    try:
+        # احصل على مجلد المشروع (أعلى من src/)
+        project_root = Path(__file__).parent.parent
+        recovery_path = project_root / "data" / "database" / "_db_failed_writes.json"
+        return str(recovery_path)
+    except Exception:
+        # fallback بسيط
+        return "./database/_db_failed_writes.json"
+
+# ---------------- افتراضيات التهيئة ----------------
+DEFAULT_BATCH_COUNT = 50
+DEFAULT_BATCH_INTERVAL = 2.0
+DEFAULT_RETRY_ATTEMPTS = 5
+DEFAULT_RECOVERY_FILE = _default_recovery_file()
+
+_VALID_COL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class _JSONSafeEncoder(json.JSONEncoder):
+    """ترميز آمن لقيم غير قابلة للتسلسل (ملف الاسترجاع)."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        try:
+            return str(obj)
+        except Exception:
+            return "<unserializable>"
+
+
+class DatabaseHandler:
+    def __init__(self,
+                 db_path: str,
+                 pragmas_profile: str = "performance",
+                 batch_commit_count: int = DEFAULT_BATCH_COUNT,
+                 batch_commit_interval: float = DEFAULT_BATCH_INTERVAL,
+                 retry_attempts: int = DEFAULT_RETRY_ATTEMPTS,
+                 recovery_file: Optional[str] = None):
+        # مسار القاعدة + إنشاء المجلد
+        self.db_path = normalize_path(db_path)
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # اتصال SQLite (autocommit عبر isolation_level=None + BEGIN IMMEDIATE يدوي)
+        self._conn: Optional[sqlite3.Connection] = None
+        self._conn_lock = threading.RLock()
+        self._open_connection(pragmas_profile)
+
+        # طابور الكتابة
+        self._write_queue: List[Tuple[str, List[Any]]] = []
+        self._queue_lock = threading.RLock()
+
+        # إعدادات الدُفعات وإعادة المحاولة
+        self._batch_commit_count = int(batch_commit_count)
+        self._batch_commit_interval = float(batch_commit_interval)
+        self._retry_attempts = int(retry_attempts)
+
+        # ملف الاسترجاع (مسار افتراضي مناسب لويندوز إن لم يمرَّر)
+        self._recovery_file = normalize_path(recovery_file or DEFAULT_RECOVERY_FILE)
+        Path(self._recovery_file).parent.mkdir(parents=True, exist_ok=True)
+
+        # خيط الخلفية للـ flush
+        self._stop_bg = threading.Event()
+        self._bg_thread = threading.Thread(target=self._bg_flusher_loop, daemon=True, name="db-flusher")
+        self._bg_thread.start()
+
+        log.info("DatabaseHandler init db=%s pragmas=%s batch_count=%d interval=%.2fs",
+                 self.db_path, pragmas_profile, self._batch_commit_count, self._batch_commit_interval)
+
+    # ---------------- Context Manager ----------------
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    # ---------------- Connection ----------------
+    def _open_connection(self, profile: str):
+        self._conn = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,
+            timeout=30,
+            isolation_level=None  # autocommit; سنستخدم BEGIN IMMEDIATE في كل عملية كتابة
+        )
+        self._conn.row_factory = sqlite3.Row
+        cur = self._conn.cursor()
+        try:
+            # إعدادات عامة مفيدة لكل المنصات
+            cur.execute("PRAGMA busy_timeout=10000;")           # 10s لتصادم الأقفال
+            cur.execute("PRAGMA foreign_keys=ON;")
+            if profile == "safe":
+                cur.execute("PRAGMA journal_mode=DELETE;")
+                cur.execute("PRAGMA synchronous=FULL;")
+            else:  # performance (افتراضي)
+                cur.execute("PRAGMA journal_mode=WAL;")
+                cur.execute("PRAGMA synchronous=NORMAL;")
+                cur.execute("PRAGMA temp_store=MEMORY;")
+                cur.execute("PRAGMA cache_size=-20000;")
+                cur.execute("PRAGMA wal_autocheckpoint=1000;")  # checkpoint دوري لتقليل .wal
+        except Exception:
+            log.exception("Failed applying PRAGMA profile=%s", profile)
+        finally:
+            cur.close()
+
+    # ---------------- Validation & SQL helpers ----------------
+    @staticmethod
+    def _validate_columns(cols: Iterable[str]) -> List[str]:
+        valid = [c for c in (cols or []) if _VALID_COL_RE.match(str(c))]
+        if not valid:
+            raise ValueError("No valid column names after validation")
+        return valid
+
+    @staticmethod
+    def _validate_table_name(table: str) -> str:
+        if not _VALID_COL_RE.match(table or ""):
+            raise ValueError("Invalid table name")
+        return table
+
+    def _make_upsert_sql(self, table: str, row: Dict[str, Any]) -> Tuple[str, List[Any]]:
+        table = self._validate_table_name(table)
+        cols = self._validate_columns(row.keys())
+        placeholders = ",".join(["?"] * len(cols))
+        sql = f"REPLACE INTO {table} ({','.join(cols)}) VALUES ({placeholders})"
+        params = [row[c] for c in cols]
+        return sql, params
+
+    # ---------------- Execute with retry ----------------
+    def _execute(self, sql: str, params: Optional[Iterable[Any]] = None, commit: bool = True):
+        attempt, last_exc = 0, None
+        params = list(params or [])
+        while attempt < self._retry_attempts:
+            attempt += 1
+            try:
+                with self._conn_lock:
+                    if self._conn is None:
+                        raise RuntimeError("DB connection is closed")
+                    cur = self._conn.cursor()
+                    cur.execute("BEGIN IMMEDIATE;")
+                    cur.execute(sql, params)
+                    if commit:
+                        self._conn.commit()
+                    return cur
+            except sqlite3.OperationalError as e:
+                last_exc = e
+                backoff = 0.05 * (2 ** (attempt - 1))
+                log.debug("SQLite retry=%d backoff=%.3fs sql=%s err=%s", attempt, backoff, sql[:160], e)
+                time.sleep(backoff)
+            except Exception:
+                log.exception("Unexpected DB error sql=%s", sql[:160])
+                raise
+        log.exception("DB execute failed after %d retries sql=%s", attempt, sql[:160])
+        raise last_exc
+
+    # ---------------- Fetch ----------------
+    def fetchone(self, sql: str, params: Optional[Iterable[Any]] = None):
+        with self._conn_lock:
+            if self._conn is None:
+                raise RuntimeError("DB connection is closed")
+            cur = self._conn.cursor()
+            cur.execute(sql, list(params or []))
+            row = cur.fetchone()
+            cur.close()
+            return row
+
+    def fetchall(self, sql: str, params: Optional[Iterable[Any]] = None):
+        with self._conn_lock:
+            if self._conn is None:
+                raise RuntimeError("DB connection is closed")
+            cur = self._conn.cursor()
+            cur.execute(sql, list(params or []))
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+
+    # ---------------- Insert / Upsert ----------------
+    def insert_or_replace(self, table: str, row: Dict[str, Any], queue: bool = True):
+        """
+        يضيف أو يستبدل صفًا (REPLACE INTO).
+        - queue=True: يضيف إلى الطابور لكتابة دفعيّة بالخلفية.
+        - queue=False: يكتب فورًا (مع إعادة المحاولة).
+        """
+        sql, params = self._make_upsert_sql(table, row)
+        if queue:
+            with self._queue_lock:
+                self._write_queue.append((sql, params))
+        else:
+            self._execute(sql, params)
+
+    def batch_upsert(self, table: str, rows: List[Dict[str, Any]]):
+        """
+        يضيف مجموعة صفوف دفعة واحدة إلى الطابور مع محاولة توحيد المخطط للحصول على executemany أسرع.
+        """
+        if not rows:
+            return 0
+        table = self._validate_table_name(table)
+
+        # إن أمكن، استخدم نفس SQL لكافة الصفوف (أداء أعلى)
+        first_cols = list(rows[0].keys())
+        first_sql, _ = self._make_upsert_sql(table, rows[0])
+        same_schema = all(set(r.keys()) == set(first_cols) for r in rows)
+
+        with self._queue_lock:
+            if same_schema:
+                col_order = self._validate_columns(first_cols)
+                for r in rows:
+                    params = [r[c] for c in col_order]
+                    self._write_queue.append((first_sql, params))
+            else:
+                # مخططات مختلفة—ابنِ SQL لكل صف
+                for r in rows:
+                    sql, params = self._make_upsert_sql(table, r)
+                    self._write_queue.append((sql, params))
+        return len(rows)
+
+    # ---------------- Background flusher ----------------
+    def _bg_flusher_loop(self):
+        last_flush = time.time()
+        while not self._stop_bg.is_set():
+            time.sleep(0.2)
+            if self._should_flush(last_flush):
+                try:
+                    self._flush_all()
+                    last_flush = time.time()
+                except Exception:
+                    log.exception("Background flush failed")
+                    time.sleep(0.5)  # backoff لتجنّب الدوران السريع
+
+    def _should_flush(self, last_flush: float) -> bool:
+        with self._queue_lock:
+            qlen = len(self._write_queue)
+        if qlen == 0:
+            return False
+        return qlen >= self._batch_commit_count or (time.time() - last_flush) >= self._batch_commit_interval
+
+    def _flush_all(self):
+        # اسحب كل ما في الطابور دفعة واحدة
+        with self._queue_lock:
+            items = list(self._write_queue)
+            self._write_queue.clear()
+        if not items:
+            return
+
+        # جمّع حسب نص SQL للاستفادة من executemany
+        grouped: Dict[str, List[List[Any]]] = {}
+        for sql, params in items:
+            grouped.setdefault(sql, []).append(params)
+
+        for sql, params_list in grouped.items():
+            attempt, last_exc = 0, None
+            while attempt < 3:
+                attempt += 1
+                try:
+                    with self._conn_lock:
+                        if self._conn is None:
+                            raise RuntimeError("DB connection is closed")
+                        cur = self._conn.cursor()
+                        cur.execute("BEGIN IMMEDIATE;")
+                        cur.executemany(sql, params_list)
+                        self._conn.commit()
+                        cur.close()
+                        break
+                except Exception as e:
+                    last_exc = e
+                    log.warning("Flush retry %d/%d failed: %s", attempt, 3, e)
+                    time.sleep(0.1 * attempt)
+            else:
+                # فشل نهائي—احفظ للاسترجاع
+                self._dump_recovery(sql, params_list)
+                if last_exc:
+                    # لا نرفع الاستثناء هنا كي لا نوقف الخيط؛ فقط نسجله
+                    log.error("Flush failed permanently for %d items. Dumped to recovery.", len(params_list))
+
+    # ---------------- Recovery ----------------
+    def _dump_recovery(self, sql: str, params_list: List[List[Any]]):
+        dump = [{"sql": sql, "params": p, "ts": int(time.time())} for p in params_list]
+        try:
+            existing = []
+            if os.path.exists(self._recovery_file):
+                with open(self._recovery_file, "r", encoding="utf-8") as f:
+                    existing = json.load(f) or []
+            existing.extend(dump)
+            tmp = f"{self._recovery_file}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(existing, f, cls=_JSONSafeEncoder, indent=2, ensure_ascii=False)
+            os.replace(tmp, self._recovery_file)
+            log.error("Failed writes dumped to %s count=%d", self._recovery_file, len(dump))
+        except Exception:
+            log.exception("Recovery dump failed")
+
+    def recover_failed_writes(self) -> int:
+        """
+        إعادة تنفيذ الكتابات الفاشلة من ملف recovery.
+        تعيد عدد العمليات الناجحة.
+        """
+        if not os.path.exists(self._recovery_file):
+            return 0
+        try:
+            with open(self._recovery_file, "r", encoding="utf-8") as f:
+                data = json.load(f) or []
+        except Exception:
+            log.exception("Failed to load recovery file")
+            return 0
+
+        if not data:
+            return 0
+
+        ok, fail = 0, 0
+        for item in data:
+            sql, params = item.get("sql"), item.get("params")
+            try:
+                self._execute(sql, params)
+                ok += 1
+            except Exception:
+                fail += 1
+
+        # إذا نجحت كلّها، احذف ملف الاسترجاع
+        if fail == 0:
+            try:
+                os.remove(self._recovery_file)
+            except Exception:
+                pass
+
+        log.info("Recovery replays: ok=%d fail=%d", ok, fail)
+        return ok
+
+    # ---------------- Control ----------------
+    def set_batch_config(self, count: Optional[int] = None, interval: Optional[float] = None):
+        """تعديل إعدادات الدُفعات أثناء التشغيل (يؤثر على الخيط الخلفي فورًا)."""
+        if count is not None:
+            self._batch_commit_count = int(count)
+        if interval is not None:
+            self._batch_commit_interval = float(interval)
+        log.info("Batch config updated count=%d interval=%.2f",
+                 self._batch_commit_count, self._batch_commit_interval)
+
+    # --- Frontend Integration Methods ---
+    def get_recent_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent security events for timeline display"""
+        try:
+            sql = """
+                SELECT id, timestamp, event_type, severity, description, 
+                       source, action_taken, details
+                FROM events 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """
+            rows = self.fetchall(sql, (limit,))
+            events = []
+            for row in rows:
+                events.append({
+                    'id': row[0],
+                    'timestamp': row[1],
+                    'event_type': row[2],
+                    'severity': row[3],
+                    'description': row[4],
+                    'source': row[5],
+                    'action_taken': row[6],
+                    'details': row[7]
+                })
+            return events
+        except Exception as e:
+            log.error(f"Error getting recent events: {e}")
+            return []
+
+    def get_monitored_paths(self) -> List[str]:
+        """Get list of monitored paths"""
+        try:
+            sql = "SELECT DISTINCT path FROM monitored_paths ORDER BY path"
+            rows = self.fetchall(sql)
+            return [row[0] for row in rows if row[0]]
+        except Exception as e:
+            log.error(f"Error getting monitored paths: {e}")
+            return []
+
+    def get_recovery_points(self) -> List[Dict[str, Any]]:
+        """Get available recovery points"""
+        try:
+            sql = """
+                SELECT id, timestamp, backup_name, path, status, 
+                       file_count, size_mb, description
+                FROM recovery_points 
+                ORDER BY timestamp DESC 
+                LIMIT 10
+            """
+            rows = self.fetchall(sql)
+            recovery_points = []
+            for row in rows:
+                recovery_points.append({
+                    'id': row[0],
+                    'timestamp': row[1],
+                    'backup_name': row[2],
+                    'path': row[3],
+                    'status': row[4],
+                    'file_count': row[5],
+                    'size_mb': row[6],
+                    'description': row[7]
+                })
+            return recovery_points
+        except Exception as e:
+            log.error(f"Error getting recovery points: {e}")
+            return []
+
+    def get_restore_history(self) -> List[Dict[str, Any]]:
+        """Get restore operation history"""
+        try:
+            sql = """
+                SELECT id, timestamp, backup_id, target_path, 
+                       status, files_restored, errors_count, notes
+                FROM restore_history 
+                ORDER BY timestamp DESC 
+                LIMIT 20
+            """
+            rows = self.fetchall(sql)
+            restore_history = []
+            for row in rows:
+                restore_history.append({
+                    'id': row[0],
+                    'timestamp': row[1],
+                    'backup_id': row[2],
+                    'target_path': row[3],
+                    'status': row[4],
+                    'files_restored': row[5],
+                    'errors_count': row[6],
+                    'notes': row[7]
+                })
+            return restore_history
+        except Exception as e:
+            log.error(f"Error getting restore history: {e}")
+            return []
+
+    def queued_count(self) -> int:
+        with self._queue_lock:
+            return len(self._write_queue)
+
+    def close(self):
+        """إغلاق آمن: إيقاف الخيط الخلفي + تفريغ الطابور + إغلاق الاتصال."""
+        self._stop_bg.set()
+        if hasattr(self, "_bg_thread") and self._bg_thread.is_alive():
+            self._bg_thread.join(timeout=3.0)
+            if self._bg_thread.is_alive():
+                log.warning("Background thread did not stop in time, forcing flush")
+
+        # محاولة التفريغ الأخير
+        try:
+            self._flush_all()
+        except Exception:
+            log.exception("Final flush failed")
+
+        with self._conn_lock:
+            if self._conn:
+                try:
+                    self._conn.commit()
+                except Exception:
+                    log.exception("DB commit on close failed")
+                try:
+                    self._conn.close()
+                except Exception:
+                    log.exception("Error closing DB")
+                self._conn = None
+
+    # إضافة الدوال المطلوبة للأخطاء السابقة
+    
+    def get_timeline_events(self, hours: int = 24):
+        """إرجاع أحداث الجدول الزمني"""
+        try:
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(hours=hours)
+            
+            sql = """
+                SELECT timestamp, event_type, severity, details 
+                FROM events 
+                WHERE timestamp >= ? 
+                ORDER BY timestamp DESC 
+                LIMIT 100
+            """
+            return self.fetchall(sql, (cutoff.isoformat(),))
+        except Exception as e:
+            log.error(f"Error getting timeline events: {e}")
+            return []
+
+    def get_monitored_paths(self):
+        """إرجاع المسارات المراقبة"""
+        try:
+            sql = "SELECT path FROM monitored_paths ORDER BY path"
+            return self.fetchall(sql)
+        except Exception as e:
+            log.error(f"Error getting monitored paths: {e}")
+            return []
+
+    def get_recent_file_operations(self, limit: int = 50):
+        """إرجاع عمليات الملفات الحديثة"""
+        try:
+            sql = """
+                SELECT path, operation_type, timestamp, threat_score 
+                FROM file_events 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            """
+            return self.fetchall(sql, (limit,))
+        except Exception as e:
+            log.error(f"Error getting recent file operations: {e}")
+            return []
+
+    def get_alerts_list(self):
+        """إرجاع قائمة التنبيهات"""
+        try:
+            sql = """
+                SELECT id, title, message, severity, created_at, status
+                FROM alerts 
+                WHERE status = 'active'
+                ORDER BY created_at DESC 
+                LIMIT 50
+            """
+            return self.fetchall(sql)
+        except Exception as e:
+            log.error(f"Error getting alerts list: {e}")
+            return []

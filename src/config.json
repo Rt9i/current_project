@@ -1,0 +1,412 @@
+{
+  "web_interface": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false,
+    "threads": 4
+  },
+  "backup": {
+    "mode": "google_drive_only",
+    "local_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\backups",
+    "auto_backup": true,
+    "compression_enabled": true,
+    "compression_level": 6,
+    "encrypt_suspicious_only": true,
+    "max_backup_size_gb": 10,
+    "max_backup_size_bytes": 10737418240,
+    "retention_days": 30,
+    "performance_throttling": true,
+    "max_concurrent_backups": 4,
+    "cleanup_old_backups": true,
+    "days_to_keep": 30,
+    "secure_delete_enabled": true,
+    "delete_method": "overwrite_7_times",
+    "backup_format": "tar.gz",
+    "preserve_metadata": true,
+    "use_safe_extraction": true,
+    "enable_path_traversal_protection": true,
+    "enable_size_policy": true,
+    "enable_async_backup": true,
+    "max_async_backup_concurrent": 4,
+    "enable_versioning": true,
+    "max_versions_per_file": 5,
+    "version_compression_enabled": true,
+    "version_encryption_enabled": true,
+    "backup_before_delete": true,
+    "backup_before_rename": true,
+    "event_hook_integration": true,
+    "encrypt_suspicious_files": true,
+    "perform_threat_zone_based_encryption": true,
+    "block_red_zone_files": true,
+    "pbkdf2_iterations": 480000,
+    "legacy_pbkdf2_iterations": 100000,
+    "use_legacy_pbkdf2": false,
+    "archive_naming": {
+      "prefix": "backup_",
+      "suffix": ".tar.gz",
+      "include_timestamp": true,
+      "timestamp_format": "%Y%m%d_%H%M%S",
+      "include_hash": false
+    }
+  },
+  "quarantine": {
+    "path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine",
+    "max_workers": 4,
+    "staging_enabled": true,
+    "security_level": "high",
+    "quarantine_root": "data/quarantine",
+    "staging_area": "data/quarantine/staging",
+    "max_quarantine_size_gb": 50,
+    "auto_cleanup_days": 90,
+    "require_admin_approval": true,
+    "log_all_actions": true,
+    "preserve_forensic_data": true,
+    "backup_before_quarantine": true,
+    "restore": {
+      "restored_files_list": true,
+      "verify_restore_integrity": true,
+      "preserve_permissions": true
+    }
+  },
+  "executor": {
+    "max_workers": 4
+  },
+  "monitoring": {
+    "protected_folders": [
+      "C:\\Users\\Admin\\Desktop\\TEST"
+    ],
+    "important_files": [],
+    "important_rescan_interval_seconds": 1800,
+    "paths_to_monitor": [],
+    "recursive_monitoring": true,
+    "buffer_size": 8192,
+    "event_timeout_seconds": 5,
+    "max_events_per_second": 100,
+    "debounce_interval_ms": 100,
+    "enable_recursive_watch": true,
+    "enable_event_hooks": true,
+    "event_hook_timeout_seconds": 30,
+    "backup_before_event": true,
+    "exclude_patterns": [
+      "C:\\Users\\Admin\\AppData\\Local\\RPS\\logs\\enhanced_system.log",
+      "enhanced_system.log",
+      "__pycache__",
+      "*.pyc",
+      "*.pyo",
+      "*.pyd",
+      "*.db",
+      "*.db-wal",
+      "*.db-shm",
+      ".git",
+      ".svn",
+      ".hg",
+      "venv",
+      ".venv",
+      "env",
+      ".env",
+      "node_modules",
+      ".npm",
+      ".yarn",
+      ".cache",
+      ".config",
+      "*.tmp",
+      "*.swp",
+      "*.bak",
+      ".DS_Store",
+      "Thumbs.db",
+      "C:\\Users\\PC\\AppData\\Local\\RPS\\logs\\enhanced_system.log",
+      "C:\\Users\\PC\\AppData\\Local\\RPS\\logs\\enhanced_system.log",
+      "C:\\Users\\PC\\AppData\\Local\\RPS\\logs\\enhanced_system.log"
+    ]
+  },
+  "database": {
+    "path": "data/database/app.db",
+    "pragmas_profile": "performance",
+    "batch_commit_count": 50,
+    "batch_commit_interval": 2.0,
+    "retry_attempts": 5,
+    "recovery_file": "data/database/_db_failed_writes.json"
+  },
+  "yara": {
+    "rules_dir": "data/YARA_RULES",
+    "pre_scan_in_main": true
+  },
+  "ml": {
+    "enabled": true,
+    "models_dir": "data/AI_MODELS",
+    "threshold": 0.7,
+    "fast_threshold": 0.5,
+    "deep_enabled": true,
+    "max_fast_file_mb": 200,
+    "verbose": false
+  },
+  "anomaly": {
+    "enabled": true,
+    "window_seconds": 60,
+    "rate_threshold": 20,
+    "threshold": 0.65,
+    "entropy_jump": 0.4,
+    "entropy_bytes": 65536,
+    "max_cache": 20000,
+    "model": "iforest",
+    "contamination": 0.02,
+    "model_path": "data/AI_MODELS/anomaly_iforest.pkl",
+    "baseline_cap": 600,
+    "weights": {
+      "rate": 0.3,
+      "ext_change": 0.25,
+      "suspicious_ext": 0.15,
+      "entropy_delta": 0.2,
+      "name_random": 0.1
+    }
+  },
+  "api_token": null,
+  "virustotal": {
+    "api_key": "e6b72c3c77aaeb8456762c1e0e2344c7e9668735eb7f6d5a32db00101cdafbec",
+    "enabled": true,
+    "request_timeout": 30,
+    "max_requests_per_minute": 4,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 5,
+    "scan_threshold": 0.7,
+    "use_environment_variable": true,
+    "environment_variable_name": "VT_API_KEY"
+  },
+  "system": {
+    "name": "Ransomware Protection System",
+    "author": "Mohammad alwreikat",
+    "description": "Production-grade backup and quarantine management system with AI-driven threat detection, enhanced security, and cross-version compatibility",
+    "compatibility": {
+      "compatible_with": [
+        "2.4.1",
+        "4.0.0"
+      ],
+      "migration_support": true,
+      "legacy_pbkdf2_support": true
+    }
+  },
+  "event_types": [
+    "create",
+    "modify",
+    "delete",
+    "rename"
+  ],
+  "detection": {
+    "thresholds": {
+      "red_zone": 0.8,
+      "gray_zone": 0.4
+    },
+    "decision_commit_threshold": 0.5,
+    "require_approval_for_gray_zone": true,
+    "auto_approve_safe_zone": true,
+    "decision_timeout_minutes": 30,
+    "learning_mode": false,
+    "ml_model_enabled": false,
+    "prevent_red_zone_backups": true
+  },
+  "security": {
+    "encryption_key_b64": null,
+    "encryption_key_file": "data/encryption.key",
+    "fallback_encryption_key": "backup_protection_key_2025",
+    "key_rotation_days": 30,
+    "enable_production_cryptography": true,
+    "key_derivation_iterations": 480000,
+    "legacy_key_derivation_iterations": 100000,
+    "use_legacy_kdf": false,
+    "salt_generation": true,
+    "key_backup_location": "data/key_backup.enc",
+    "path_traversal_protection": true,
+    "safe_extraction_mode": "preserve_structure",
+    "manual_extraction_mode": true,
+    "virustotal_api_key": "",
+    "fixes": {
+      "safe_extraction_flatten": false,
+      "secure_delete_verification": true,
+      "enc_extension_policy": "encrypted_only",
+      "windows_chmod_compatibility": true,
+      "verify_encrypted_backups": true
+    }
+  },
+  "storage": {
+    "backup_location": "data/backups",
+    "temp_location": "data/temp",
+    "max_storage_size_gb": 100,
+    "auto_cleanup_enabled": true,
+    "cleanup_schedule": "daily",
+    "archive_old_backups": true,
+    "compression_archive": true,
+    "verify_backup_integrity": true,
+    "checksum_validation": true,
+    "store_archive_checksums": true,
+    "validate_extracted_files": true,
+    "integrity_check": {
+      "enabled": true,
+      "verify_checksums": true,
+      "verify_encrypted": true,
+      "check_file_structure": true,
+      "timeout_seconds": 300
+    }
+  },
+  "performance": {
+    "max_threads": 4,
+    "thread_pool_size": 4,
+    "max_memory_usage_mb": 512,
+    "cache_size_mb": 64,
+    "enable_performance_monitoring": true,
+    "performance_reporting_interval": 300,
+    "resource_monitoring": true,
+    "auto_throttle": true,
+    "max_cpu_percent": 80,
+    "enable_detailed_timing": true,
+    "timing_precision": "microseconds",
+    "track_active_async_operations": true
+  },
+  "telemetry": {
+    "enabled": true,
+    "flush_every_n_events": 100,
+    "metrics_retention_days": 30,
+    "performance_metrics_enabled": true,
+    "security_metrics_enabled": true,
+    "export_format": "json",
+    "export_interval_hours": 24,
+    "detailed_performance_tracking": true,
+    "event_hook_metrics": true
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "data/logs/system.log",
+    "max_file_size_mb": 100,
+    "backup_count": 5,
+    "enable_console_logging": true,
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "enable_structured_logging": true,
+    "log_performance_metrics": true,
+    "log_event_hooks": true
+  },
+  "exclusions": {
+    "exclude_patterns": [
+      "backup_index.json",
+      "*.log",
+      "*.tmp",
+      "*.temp",
+      ".git/*",
+      "__pycache__/*",
+      "*.pyc",
+      ".DS_Store",
+      "Thumbs.db"
+    ],
+    "exclude_extensions": [],
+    "exclude_paths": [
+      "data/logs/",
+      "data/temp/",
+      "data/backups/",
+      "data/quarantine/"
+    ]
+  },
+  "api": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 8080,
+    "authentication_required": true,
+    "api_key": null,
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 60,
+      "burst_limit": 10
+    },
+    "cors_enabled": true,
+    "cors_origins": [
+      "http://localhost:3000"
+    ]
+  },
+  "notifications": {
+    "enabled": true,
+    "email_notifications": false,
+    "email_smtp_server": null,
+    "email_port": 587,
+    "email_username": null,
+    "email_password": null,
+    "email_recipients": [],
+    "desktop_notifications": true,
+    "sound_alerts": true,
+    "notification_thresholds": {
+      "high_risk": 0.9,
+      "medium_risk": 0.6,
+      "backup_failure": true,
+      "quarantine_activity": true,
+      "red_zone_detected": true,
+      "size_limit_exceeded": true,
+      "event_hook_failure": true,
+      "versioning_limit_reached": true
+    }
+  },
+  "event_integration": {
+    "enabled": true,
+    "event_handler_integration": true,
+    "backup_before_delete": true,
+    "backup_before_rename": true,
+    "backup_before_modify": false,
+    "event_backup_timeout": 30,
+    "rollback_on_failure": true,
+    "version_on_modify": true,
+    "preserve_original_on_rename": true
+  },
+  "versioning": {
+    "enabled": true,
+    "max_versions_per_file": 5,
+    "version_compression_enabled": true,
+    "version_encryption_enabled": true,
+    "cleanup_old_versions": true,
+    "version_retention_days": 90,
+    "version_naming_pattern": "v{number}",
+    "preserve_version_metadata": true,
+    "accurate_cleanup_counting": true
+  },
+  "advanced_features": {
+    "machine_learning": {
+      "enabled": false,
+      "model_path": "data/AI_MODELS/threat_detection.pkl",
+      "training_data_path": "data/training_data.json",
+      "retrain_interval_days": 7,
+      "confidence_threshold": 0.8
+    },
+    "behavioral_analysis": {
+      "enabled": true,
+      "track_file_operations": true,
+      "analyze_process_behavior": false,
+      "suspicious_pattern_detection": true
+    },
+    "blockchain_verification": {
+      "enabled": false,
+      "blockchain_network": "ethereum",
+      "smart_contract_address": null,
+      "verify_backups": false
+    }
+  },
+  "development": {
+    "debug_mode": false,
+    "verbose_logging": false,
+    "mock_external_apis": false,
+    "test_mode": false,
+    "simulation_mode": false
+  },
+  "migration": {
+    "from_version_2_4_1": {
+      "pbkdf2_migration": {
+        "enabled": true,
+        "migrate_existing_backups": false,
+        "keep_legacy_support": true
+      },
+      "archive_naming_migration": {
+        "enabled": true,
+        "preserve_old_names": true,
+        "auto_rename": false
+      },
+      "version_migration": {
+        "enabled": true,
+        "preserve_metadata": true,
+        "recalculate_checksums": false
+      }
+    }
+  }
+}

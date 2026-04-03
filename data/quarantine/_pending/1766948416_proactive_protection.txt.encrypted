@@ -1,0 +1,421 @@
+#  ransomware_protection_system\src\proactive_protection.py
+
+import os
+import time
+import logging
+import threading
+import psutil
+import hashlib
+from typing import Dict, List, Set, Optional
+from collections import defaultdict, deque
+from datetime import datetime, timedelta
+import json
+
+class ProactiveProtection:
+    """نظام الحماية الاستباقية المحسن لمنع تشفير الملفات"""
+    
+    def __init__(self, detector):
+        self.detector = detector
+        self.is_active = False
+        
+        # مراقبة العمليات المشبوهة
+        self.suspicious_processes = set()
+        self.process_file_access = defaultdict(list)  # PID -> [file_paths]
+        self.process_creation_rate = defaultdict(deque)  # PID -> [timestamps]
+        
+        # مراقبة أنماط الوصول للملفات
+        self.file_access_patterns = defaultdict(list)  # file_path -> [access_times]
+        self.rapid_file_changes = defaultdict(int)  # directory -> count
+        
+        # مراقبة الإنتروبيا
+        self.entropy_monitoring = {}  # file_path -> entropy_history
+        self.entropy_threshold = 7.5
+        
+        # قائمة العمليات الموثوقة
+        self.trusted_processes = {
+            'explorer.exe', 'notepad.exe', 'winword.exe', 'excel.exe',
+            'chrome.exe', 'firefox.exe', 'code.exe', 'python.exe'
+        }
+        
+        # إعدادات الكشف
+        self.max_files_per_second = 10
+        self.max_entropy_change = 2.0
+        self.suspicious_extensions = self.detector.config.get('suspicious_extensions', [])
+        
+        # خيوط المراقبة
+        self.monitoring_threads = []
+        self.stop_monitoring = threading.Event()
+        
+        logging.info("تم تهيئة نظام الحماية الاستباقية")
+    
+    def start_protection(self):
+        """بدء الحماية الاستباقية"""
+        if self.is_active:
+            return
+        
+        self.is_active = True
+        self.stop_monitoring.clear()
+        
+        # بدء خيوط المراقبة
+        threads = [
+            threading.Thread(target=self._monitor_processes, daemon=True),
+            threading.Thread(target=self._monitor_file_patterns, daemon=True),
+            threading.Thread(target=self._monitor_entropy_changes, daemon=True),
+            threading.Thread(target=self._monitor_rapid_encryption, daemon=True)
+        ]
+        
+        for thread in threads:
+            thread.start()
+            self.monitoring_threads.append(thread)
+        
+        logging.info("تم بدء الحماية الاستباقية")
+    
+    def stop_protection(self):
+        """إيقاف الحماية الاستباقية"""
+        if not self.is_active:
+            return
+        
+        self.is_active = False
+        self.stop_monitoring.set()
+        
+        # انتظار انتهاء الخيوط
+        for thread in self.monitoring_threads:
+            thread.join(timeout=5)
+        
+        self.monitoring_threads.clear()
+        logging.info("تم إيقاف الحماية الاستباقية")
+    
+    def _monitor_processes(self):
+        """مراقبة العمليات المشبوهة"""
+        while not self.stop_monitoring.is_set():
+            try:
+                current_time = time.time()
+                
+                for proc in psutil.process_iter(['pid', 'name', 'create_time', 'open_files']):
+                    try:
+                        proc_info = proc.info
+                        pid = proc_info['pid']
+                        name = proc_info['name']
+                        
+                        # تجاهل العمليات الموثوقة
+                        if name.lower() in self.trusted_processes:
+                            continue
+                        
+                        # مراقبة معدل إنشاء العمليات
+                        self.process_creation_rate[pid].append(current_time)
+                        
+                        # الاحتفاظ بآخر 60 ثانية فقط
+                        while (self.process_creation_rate[pid] and 
+                               current_time - self.process_creation_rate[pid][0] > 60):
+                            self.process_creation_rate[pid].popleft()
+                        
+                        # فحص الملفات المفتوحة
+                        try:
+                            open_files = proc.open_files()
+                            if open_files:
+                                file_paths = [f.path for f in open_files]
+                                self.process_file_access[pid] = file_paths
+                                
+                                # فحص الوصول المشبوه للملفات
+                                if self._is_suspicious_file_access(pid, file_paths):
+                                    self._handle_suspicious_process(pid, name, file_paths)
+                        except (psutil.AccessDenied, psutil.NoSuchProcess):
+                            pass
+                            
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+                
+                time.sleep(1)  # فحص كل ثانية
+                
+            except Exception as e:
+                logging.error(f"خطأ في مراقبة العمليات: {e}")
+                time.sleep(5)
+    
+    def _monitor_file_patterns(self):
+        """مراقبة أنماط الوصول للملفات"""
+        while not self.stop_monitoring.is_set():
+            try:
+                current_time = time.time()
+                
+                # تنظيف البيانات القديمة
+                cutoff_time = current_time - 300  # 5 دقائق
+                
+                for file_path in list(self.file_access_patterns.keys()):
+                    # إزالة الوصولات القديمة
+                    self.file_access_patterns[file_path] = [
+                        t for t in self.file_access_patterns[file_path] 
+                        if t > cutoff_time
+                    ]
+                    
+                    # إزالة الملفات غير النشطة
+                    if not self.file_access_patterns[file_path]:
+                        del self.file_access_patterns[file_path]
+                
+                # فحص الأنماط المشبوهة
+                for file_path, access_times in self.file_access_patterns.items():
+                    if len(access_times) > self.max_files_per_second * 5:  # 5 ثوان
+                        self._handle_rapid_file_access(file_path, access_times)
+                
+                time.sleep(5)  # فحص كل 5 ثوان
+                
+            except Exception as e:
+                logging.error(f"خطأ في مراقبة أنماط الملفات: {e}")
+                time.sleep(10)
+    
+    def _monitor_entropy_changes(self):
+        """مراقبة تغييرات الإنتروبيا"""
+        while not self.stop_monitoring.is_set():
+            try:
+                # فحص الملفات في المجلدات المحمية
+                for folder in self.detector.config.get('protected_folders', []):
+                    if not os.path.exists(folder):
+                        continue
+                    
+                    self._scan_folder_entropy(folder)
+                
+                time.sleep(10)  # فحص كل 10 ثوان
+                
+            except Exception as e:
+                logging.error(f"خطأ في مراقبة الإنتروبيا: {e}")
+                time.sleep(30)
+    
+    def _monitor_rapid_encryption(self):
+        """مراقبة التشفير السريع"""
+        while not self.stop_monitoring.is_set():
+            try:
+                current_time = time.time()
+                
+                # فحص التغييرات السريعة في المجلدات
+                for directory, count in list(self.rapid_file_changes.items()):
+                    if count > 20:  # أكثر من 20 ملف في فترة قصيرة
+                        logging.warning(f"تشفير سريع محتمل في المجلد: {directory}")
+                        self._handle_rapid_encryption(directory)
+                
+                # إعادة تعيين العدادات
+                self.rapid_file_changes.clear()
+                
+                time.sleep(30)  # فحص كل 30 ثانية
+                
+            except Exception as e:
+                logging.error(f"خطأ في مراقبة التشفير السريع: {e}")
+                time.sleep(60)
+    
+    def _is_suspicious_file_access(self, pid: int, file_paths: List[str]) -> bool:
+        """فحص ما إذا كان الوصول للملفات مشبوهاً"""
+        try:
+            # فحص عدد الملفات المفتوحة
+            if len(file_paths) > 50:  # عدد كبير من الملفات المفتوحة
+                return True
+            
+            # فحص أنواع الملفات
+            important_files = 0
+            for file_path in file_paths:
+                if self._is_important_file(file_path):
+                    important_files += 1
+            
+            # إذا كان يصل إلى عدد كبير من الملفات المهمة
+            if important_files > 10:
+                return True
+            
+            # فحص الامتدادات المشبوهة
+            for file_path in file_paths:
+                if any(file_path.endswith(ext) for ext in self.suspicious_extensions):
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logging.error(f"خطأ في فحص الوصول المشبوه: {e}")
+            return False
+    
+    def _is_important_file(self, file_path: str) -> bool:
+        """فحص ما إذا كان الملف مهماً"""
+        important_extensions = [
+            '.doc', '.docx', '.pdf', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.txt', '.jpg', '.jpeg', '.png', '.mp4', '.avi', '.mp3',
+            '.zip', '.rar', '.7z', '.sql', '.db'
+        ]
+        
+        file_extension = os.path.splitext(file_path)[1].lower()
+        return file_extension in important_extensions
+    
+    def _scan_folder_entropy(self, folder_path: str):
+        """فحص إنتروبيا الملفات في مجلد"""
+        try:
+            for root, dirs, files in os.walk(folder_path):
+                for file in files[:10]:  # فحص أول 10 ملفات فقط لتوفير الأداء
+                    file_path = os.path.join(root, file)
+                    
+                    if not os.path.exists(file_path):
+                        continue
+                    
+                    try:
+                        # حساب الإنتروبيا الحالية
+                        current_entropy = self._calculate_file_entropy(file_path)
+                        
+                        # مقارنة مع الإنتروبيا السابقة
+                        if file_path in self.entropy_monitoring:
+                            previous_entropy = self.entropy_monitoring[file_path]
+                            entropy_change = abs(current_entropy - previous_entropy)
+                            
+                            if entropy_change > self.max_entropy_change:
+                                logging.warning(f"تغيير كبير في الإنتروبيا: {file_path}")
+                                self._handle_entropy_change(file_path, previous_entropy, current_entropy)
+                        
+                        # تحديث الإنتروبيا
+                        self.entropy_monitoring[file_path] = current_entropy
+                        
+                    except Exception as e:
+                        logging.debug(f"خطأ في فحص إنتروبيا الملف {file_path}: {e}")
+                        continue
+                        
+        except Exception as e:
+            logging.error(f"خطأ في فحص إنتروبيا المجلد {folder_path}: {e}")
+    
+    def _calculate_file_entropy(self, file_path: str) -> float:
+        """حساب إنتروبيا الملف"""
+        try:
+            with open(file_path, 'rb') as f:
+                data = f.read(1024)  # قراءة أول 1KB
+            
+            if not data:
+                return 0.0
+            
+            # حساب تكرار كل بايت
+            frequency = {}
+            for byte in data:
+                frequency[byte] = frequency.get(byte, 0) + 1
+            
+            # حساب الإنتروبيا
+            entropy = 0
+            data_len = len(data)
+            for count in frequency.values():
+                probability = count / data_len
+                if probability > 0:
+                    entropy -= probability * (probability.bit_length() - 1)
+            
+            return entropy
+            
+        except Exception as e:
+            logging.debug(f"خطأ في حساب إنتروبيا الملف {file_path}: {e}")
+            return 0.0
+    
+    def _handle_suspicious_process(self, pid: int, name: str, file_paths: List[str]):
+        """معالجة العملية المشبوهة"""
+        try:
+            logging.error(f"عملية مشبوهة: {name} (PID: {pid})")
+            
+            # إضافة العملية إلى القائمة المشبوهة
+            self.suspicious_processes.add(pid)
+            
+            # محاولة إيقاف العملية
+            try:
+                proc = psutil.Process(pid)
+                proc.terminate()
+                logging.warning(f"تم إيقاف العملية المشبوهة: {name} (PID: {pid})")
+                
+                # إرسال تنبيه
+                self.detector.notification_system.send_alert(
+                    alert_type="Suspicious Process Terminated",
+                    message=f"تم إيقاف عملية مشبوهة: {name} (PID: {pid})",
+                    severity="high"
+                )
+                
+            except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                logging.error(f"لا يمكن إيقاف العملية {pid}: {e}")
+            
+            # عزل الملفات المتأثرة
+            for file_path in file_paths:
+                if os.path.exists(file_path) and self._is_important_file(file_path):
+                    self.detector.quarantine_file(file_path, {
+                        "detection_method": "Proactive Protection",
+                        "suspicious_process": name,
+                        "process_pid": pid,
+                        "confidence": 0.8
+                    })
+            
+        except Exception as e:
+            logging.error(f"خطأ في معالجة العملية المشبوهة: {e}")
+    
+    def _handle_rapid_file_access(self, file_path: str, access_times: List[float]):
+        """معالجة الوصول السريع للملفات"""
+        try:
+            logging.warning(f"وصول سريع مشبوه للملف: {file_path}")
+            
+            # إرسال تنبيه
+            self.detector.notification_system.send_alert(
+                alert_type="Rapid File Access Detected",
+                message=f"تم اكتشاف وصول سريع مشبوه للملف: {file_path}",
+                severity="medium",
+                file_path=file_path
+            )
+            
+        except Exception as e:
+            logging.error(f"خطأ في معالجة الوصول السريع: {e}")
+    
+    def _handle_entropy_change(self, file_path: str, old_entropy: float, new_entropy: float):
+        """معالجة تغيير الإنتروبيا"""
+        try:
+            logging.warning(f"تغيير إنتروبيا مشبوه: {file_path} ({old_entropy:.2f} -> {new_entropy:.2f})")
+            
+            # إذا ارتفعت الإنتروبيا بشكل كبير، قد يكون الملف مشفراً
+            if new_entropy > self.entropy_threshold and new_entropy > old_entropy + 1.0:
+                self.detector.quarantine_file(file_path, {
+                    "detection_method": "Entropy Analysis",
+                    "old_entropy": old_entropy,
+                    "new_entropy": new_entropy,
+                    "confidence": 0.7
+                })
+            
+        except Exception as e:
+            logging.error(f"خطأ في معالجة تغيير الإنتروبيا: {e}")
+    
+    def _handle_rapid_encryption(self, directory: str):
+        """معالجة التشفير السريع"""
+        try:
+            logging.error(f"تشفير سريع محتمل في المجلد: {directory}")
+            
+            # إرسال تنبيه عاجل
+            self.detector.notification_system.send_alert(
+                alert_type="Rapid Encryption Detected",
+                message=f"تم اكتشاف تشفير سريع محتمل في المجلد: {directory}",
+                severity="critical"
+            )
+            
+            # محاولة إيقاف العمليات المشبوهة
+            for pid in list(self.suspicious_processes):
+                try:
+                    proc = psutil.Process(pid)
+                    proc.kill()  # إيقاف فوري
+                    logging.warning(f"تم إيقاف العملية المشبوهة فورياً: {pid}")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            
+        except Exception as e:
+            logging.error(f"خطأ في معالجة التشفير السريع: {e}")
+    
+    def record_file_access(self, file_path: str):
+        """تسجيل الوصول للملف"""
+        try:
+            current_time = time.time()
+            self.file_access_patterns[file_path].append(current_time)
+            
+            # تسجيل التغيير في المجلد
+            directory = os.path.dirname(file_path)
+            self.rapid_file_changes[directory] += 1
+            
+        except Exception as e:
+            logging.debug(f"خطأ في تسجيل الوصول للملف: {e}")
+    
+    def get_protection_status(self) -> Dict:
+        """الحصول على حالة الحماية الاستباقية"""
+        return {
+            "is_active": self.is_active,
+            "suspicious_processes_count": len(self.suspicious_processes),
+            "monitored_files_count": len(self.file_access_patterns),
+            "entropy_monitored_files": len(self.entropy_monitoring),
+            "rapid_changes_detected": sum(self.rapid_file_changes.values())
+        }
+
+
+.encrypted

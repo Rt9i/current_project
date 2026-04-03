@@ -1,0 +1,812 @@
+{
+  "1766947729_6.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\6.docx.encrypted",
+    "quarantine_name": "1766947729_6.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766947729_6.docx.encrypted",
+    "sha256": "e3eb363b0c40c1ee7c88878fd11e0d2ab05ac71036b0ad939ed651f39aa10391",
+    "reasons": [
+      "high_entropy:7.97"
+    ],
+    "staged_ts": 1766947729,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766947730_ankara11 - Copy.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\ankara11 - Copy.docx.encrypted",
+    "quarantine_name": "1766947730_ankara11 - Copy.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766947730_ankara11 - Copy.docx.encrypted",
+    "sha256": "8849093ee467888c23df5a1e9faf3ae109b5bead3c39ac3e7bb3685fc07069a4",
+    "reasons": [
+      "high_entropy:7.79"
+    ],
+    "staged_ts": 1766947730,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766947760_code.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\code.docx.encrypted",
+    "quarantine_name": "1766947760_code.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766947760_code.docx.encrypted",
+    "sha256": "27387781c811d0a5ec12be43eb07cf3818abdfcfbc6704410f397cd9f5af6b81",
+    "reasons": [
+      "high_entropy:7.25"
+    ],
+    "staged_ts": 1766947760,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766947765_Complexity Summary.pdf.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Complexity Summary.pdf.encrypted",
+    "quarantine_name": "1766947765_Complexity Summary.pdf.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766947765_Complexity Summary.pdf.encrypted",
+    "sha256": "1fada26feef930f6b08922af545d399b38d1c78f959ebe0d7f5256637a35f3a7",
+    "reasons": [
+      "high_entropy:7.98"
+    ],
+    "staged_ts": 1766947765,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948021_6.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\6.docx.encrypted",
+    "quarantine_name": "1766948021_6.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948021_6.docx.encrypted",
+    "sha256": "e3eb363b0c40c1ee7c88878fd11e0d2ab05ac71036b0ad939ed651f39aa10391",
+    "reasons": [
+      "high_entropy:7.97"
+    ],
+    "staged_ts": 1766948022,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948024_ankara11 - Copy.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\ankara11 - Copy.docx.encrypted",
+    "quarantine_name": "1766948024_ankara11 - Copy.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948024_ankara11 - Copy.docx.encrypted",
+    "sha256": "8849093ee467888c23df5a1e9faf3ae109b5bead3c39ac3e7bb3685fc07069a4",
+    "reasons": [
+      "high_entropy:7.79"
+    ],
+    "staged_ts": 1766948025,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948065_code.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\code.docx.encrypted",
+    "quarantine_name": "1766948065_code.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948065_code.docx.encrypted",
+    "sha256": "27387781c811d0a5ec12be43eb07cf3818abdfcfbc6704410f397cd9f5af6b81",
+    "reasons": [
+      "high_entropy:7.25"
+    ],
+    "staged_ts": 1766948065,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948070_Complexity Summary.pdf.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Complexity Summary.pdf.encrypted",
+    "quarantine_name": "1766948070_Complexity Summary.pdf.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948070_Complexity Summary.pdf.encrypted",
+    "sha256": "1fada26feef930f6b08922af545d399b38d1c78f959ebe0d7f5256637a35f3a7",
+    "reasons": [
+      "high_entropy:7.98"
+    ],
+    "staged_ts": 1766948070,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948075_Downloads - Shortcut.lnk.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Downloads - Shortcut.lnk.encrypted",
+    "quarantine_name": "1766948075_Downloads - Shortcut.lnk.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948075_Downloads - Shortcut.lnk.encrypted",
+    "sha256": "56f55eb13e3f13c646fcd2d6a1ae6b4a737224c481dbfd7aacc60503bcdcb630",
+    "reasons": [],
+    "staged_ts": 1766948075,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948081_m14.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m14.jpg.encrypted",
+    "quarantine_name": "1766948081_m14.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948081_m14.jpg.encrypted",
+    "sha256": "731b8faa0f40f4a3d50cea5e1d3ff3bd3adcb38ec593fa607ae7023287f7858e",
+    "reasons": [
+      "high_entropy:7.81"
+    ],
+    "staged_ts": 1766948081,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948086_m15.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m15.jpg.encrypted",
+    "quarantine_name": "1766948086_m15.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948086_m15.jpg.encrypted",
+    "sha256": "e40877892ffefe0c3b9594fb90b7ab7324ba281779fbb98f0b49a8de4a9b85c8",
+    "reasons": [
+      "high_entropy:7.85"
+    ],
+    "staged_ts": 1766948086,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948091_m16.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m16.jpg.encrypted",
+    "quarantine_name": "1766948091_m16.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948091_m16.jpg.encrypted",
+    "sha256": "e86ed056be8669fdff2f337980ab1fd513e0d315ec033e404882311da7cd522e",
+    "reasons": [
+      "high_entropy:7.78"
+    ],
+    "staged_ts": 1766948091,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948095_m17.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m17.jpg.encrypted",
+    "quarantine_name": "1766948095_m17.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948095_m17.jpg.encrypted",
+    "sha256": "5654368e8be0ad3ec0f5796ff75441c259585991f4b22deb5bcc865c50403339",
+    "reasons": [
+      "high_entropy:7.89"
+    ],
+    "staged_ts": 1766948095,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948100_m18.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m18.jpg.encrypted",
+    "quarantine_name": "1766948100_m18.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948100_m18.jpg.encrypted",
+    "sha256": "cc80a6a1670d1904f1f27073894104d0a2708249e200f9400ae3612cbf88e1f9",
+    "reasons": [
+      "high_entropy:7.89"
+    ],
+    "staged_ts": 1766948100,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948106_m19.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m19.jpg.encrypted",
+    "quarantine_name": "1766948106_m19.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948106_m19.jpg.encrypted",
+    "sha256": "cfc38cf0c0921a3abc8450a218a94f980378b72a92e70deddf3e36a5a574c658",
+    "reasons": [
+      "high_entropy:7.84"
+    ],
+    "staged_ts": 1766948106,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948110_m2.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m2.jpg.encrypted",
+    "quarantine_name": "1766948110_m2.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948110_m2.jpg.encrypted",
+    "sha256": "b5e3168b26899fe590bd9596eec8e4526f8926e8457384f1fe63ee27b9914126",
+    "reasons": [
+      "high_entropy:7.87"
+    ],
+    "staged_ts": 1766948110,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948115_m3.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m3.jpg.encrypted",
+    "quarantine_name": "1766948115_m3.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948115_m3.jpg.encrypted",
+    "sha256": "cf3936f7014850868c593e60596ee5133d07fada9b2c052d29d2fc09b87b7aed",
+    "reasons": [
+      "high_entropy:7.88"
+    ],
+    "staged_ts": 1766948116,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948121_m4.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m4.jpg.encrypted",
+    "quarantine_name": "1766948121_m4.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948121_m4.jpg.encrypted",
+    "sha256": "5d78c67869883cae3153f6c28a59158889710e06cc59ea34e58473c2db780384",
+    "reasons": [
+      "high_entropy:7.87"
+    ],
+    "staged_ts": 1766948121,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948125_m5.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m5.jpg.encrypted",
+    "quarantine_name": "1766948125_m5.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948125_m5.jpg.encrypted",
+    "sha256": "09385d25cafdc3f2ff9518a8639d3500b68861c6e98374a7441dc5593b19bc4a",
+    "reasons": [
+      "high_entropy:7.88"
+    ],
+    "staged_ts": 1766948125,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948130_m6.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m6.jpg.encrypted",
+    "quarantine_name": "1766948130_m6.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948130_m6.jpg.encrypted",
+    "sha256": "9ad31a50d66e70ac695894fca91a071fc5e38d177c4f2458f85d1b3de0e7f1e3",
+    "reasons": [
+      "high_entropy:7.76"
+    ],
+    "staged_ts": 1766948130,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948136_m7.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m7.jpg.encrypted",
+    "quarantine_name": "1766948136_m7.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948136_m7.jpg.encrypted",
+    "sha256": "77596917cc5cff8c8eb95fda6ae6578b900c8373a503b0302ddb35f30bc75399",
+    "reasons": [
+      "high_entropy:7.84"
+    ],
+    "staged_ts": 1766948136,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948140_m8.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m8.jpg.encrypted",
+    "quarantine_name": "1766948140_m8.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948140_m8.jpg.encrypted",
+    "sha256": "4196a845df8e81eaed7117bdbf0e2ff21b387245e4b1d4f7c26db6f3f442aa8a",
+    "reasons": [
+      "high_entropy:7.85"
+    ],
+    "staged_ts": 1766948140,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948145_m9.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\m9.jpg.encrypted",
+    "quarantine_name": "1766948145_m9.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948145_m9.jpg.encrypted",
+    "sha256": "c2b02701ab260060069c7c734198e387730cc3c0a4b20d7cae934bb529a75992",
+    "reasons": [
+      "high_entropy:7.80"
+    ],
+    "staged_ts": 1766948145,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948151_mid.jpg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\mid.jpg.encrypted",
+    "quarantine_name": "1766948151_mid.jpg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948151_mid.jpg.encrypted",
+    "sha256": "a1e1c4a49464e01d1ec3459e334d3e6f3b83011865ca0a3fdbfe531bfcc0311f",
+    "reasons": [
+      "high_entropy:7.74"
+    ],
+    "staged_ts": 1766948151,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948175_Solutionsبحاجة لتعديل.png.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\Solutionsبحاجة لتعديل.png.encrypted",
+    "quarantine_name": "1766948175_Solutionsبحاجة لتعديل.png.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948175_Solutionsبحاجة لتعديل.png.encrypted",
+    "sha256": "c66b34d3e5dacdb48042cdc2f4515bed0743c0c2b575a311777c86fba5b600e7",
+    "reasons": [
+      "high_entropy:7.73"
+    ],
+    "staged_ts": 1766948175,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948180_WhatsApp Image 2025-04-07 at 6.19.59 PM (1).jpeg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\WhatsApp Image 2025-04-07 at 6.19.59 PM (1).jpeg.encrypted",
+    "quarantine_name": "1766948180_WhatsApp Image 2025-04-07 at 6.19.59 PM (1).jpeg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948180_WhatsApp Image 2025-04-07 at 6.19.59 PM (1).jpeg.encrypted",
+    "sha256": "fe8b6702cb3a10fdb0c18cbc379b06906de223faf1a4303b2e47550603ba4795",
+    "reasons": [
+      "high_entropy:7.95"
+    ],
+    "staged_ts": 1766948180,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948185_WhatsApp Image 2025-04-07 at 6.19.59 PM.jpeg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\WhatsApp Image 2025-04-07 at 6.19.59 PM.jpeg.encrypted",
+    "quarantine_name": "1766948185_WhatsApp Image 2025-04-07 at 6.19.59 PM.jpeg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948185_WhatsApp Image 2025-04-07 at 6.19.59 PM.jpeg.encrypted",
+    "sha256": "fe8b6702cb3a10fdb0c18cbc379b06906de223faf1a4303b2e47550603ba4795",
+    "reasons": [
+      "high_entropy:7.95"
+    ],
+    "staged_ts": 1766948185,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948190_WhatsApp Image 2025-04-19 at 3.14.41 PM.jpeg.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\algooo\\WhatsApp Image 2025-04-19 at 3.14.41 PM.jpeg.encrypted",
+    "quarantine_name": "1766948190_WhatsApp Image 2025-04-19 at 3.14.41 PM.jpeg.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948190_WhatsApp Image 2025-04-19 at 3.14.41 PM.jpeg.encrypted",
+    "sha256": "39d685f1d53810c77d4bbccb6af3da72ebe4621571174d2f3fb97958a7b58daa",
+    "reasons": [
+      "high_entropy:7.93"
+    ],
+    "staged_ts": 1766948190,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948196_ai_model.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ai_model.txt.encrypted",
+    "quarantine_name": "1766948196_ai_model.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948196_ai_model.txt.encrypted",
+    "sha256": "a9fea00c1d80f2b2186ba35f4a21e988371b159b14152e4299c3b11354904f59",
+    "reasons": [],
+    "staged_ts": 1766948196,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948200_app.db.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\app.db.txt.encrypted",
+    "quarantine_name": "1766948200_app.db.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948200_app.db.txt.encrypted",
+    "sha256": "49d688bf6bd20c0b504d3c706f1524fd33c47243d8ed21391ee4f465026d6c6d",
+    "reasons": [],
+    "staged_ts": 1766948200,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948275_ember_ai_model.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ember_ai_model.txt.encrypted",
+    "quarantine_name": "1766948275_ember_ai_model.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948275_ember_ai_model.txt.encrypted",
+    "sha256": "3dc60822acedf66b658207e0409f50293600cf86cf24ed22a947e672c6fca3f3",
+    "reasons": [],
+    "staged_ts": 1766948275,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948280_ember_ai_model_backup.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ember_ai_model_backup.txt.encrypted",
+    "quarantine_name": "1766948280_ember_ai_model_backup.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948280_ember_ai_model_backup.txt.encrypted",
+    "sha256": "3cb0f9478fc0d19c2e9a9b5305f2c93990dd9b7f8f65868576d86484a4255567",
+    "reasons": [],
+    "staged_ts": 1766948280,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948285_ember_model.pkl.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ember_model.pkl.encrypted",
+    "quarantine_name": "1766948285_ember_model.pkl.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948285_ember_model.pkl.encrypted",
+    "sha256": "e8305f36884c74056652e3340a2f7e6ac578c4f6dc8b3d8ecaa67ec985309f77",
+    "reasons": [],
+    "staged_ts": 1766948286,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948290_ember_vectorizer.pkl.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ember_vectorizer.pkl.encrypted",
+    "quarantine_name": "1766948290_ember_vectorizer.pkl.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948290_ember_vectorizer.pkl.encrypted",
+    "sha256": "e8305f36884c74056652e3340a2f7e6ac578c4f6dc8b3d8ecaa67ec985309f77",
+    "reasons": [],
+    "staged_ts": 1766948290,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948355_index.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\index.txt.encrypted",
+    "quarantine_name": "1766948355_index.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948355_index.txt.encrypted",
+    "sha256": "6a4de9dd81a13abb97495e6409cfc626bfc6589117520f832e97f7dfcc27e329",
+    "reasons": [],
+    "staged_ts": 1766948355,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948386_notification_system.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\notification_system.txt.encrypted",
+    "quarantine_name": "1766948386_notification_system.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948386_notification_system.txt.encrypted",
+    "sha256": "8f94e13447c2827d9889bb0e0e30eeae4a42c5d2592fbd5413b059acc0aa1e1e",
+    "reasons": [],
+    "staged_ts": 1766948386,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948410_pretrained_ai_model.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\pretrained_ai_model.txt.encrypted",
+    "quarantine_name": "1766948410_pretrained_ai_model.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948410_pretrained_ai_model.txt.encrypted",
+    "sha256": "2594579d7983bbabffbbc98003afee2685aa9a7835f12d3f8767480e611f4b23",
+    "reasons": [],
+    "staged_ts": 1766948410,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948416_proactive_protection.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\proactive_protection.txt.encrypted",
+    "quarantine_name": "1766948416_proactive_protection.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948416_proactive_protection.txt.encrypted",
+    "sha256": "4ccfb3f2dd1f1b3efb08c10039e69e30d2dc030850f32d45e37e19df109acc7d",
+    "reasons": [],
+    "staged_ts": 1766948416,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948421_quarantine_manager.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\quarantine_manager.txt.encrypted",
+    "quarantine_name": "1766948421_quarantine_manager.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948421_quarantine_manager.txt.encrypted",
+    "sha256": "6c8476f20b5b1c556475653bf8577fab10f5a22f5609f20944d6e37d965b1a3e",
+    "reasons": [],
+    "staged_ts": 1766948421,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948445_ransomware_db.sqlite.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ransomware_db.sqlite.txt.encrypted",
+    "quarantine_name": "1766948445_ransomware_db.sqlite.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948445_ransomware_db.sqlite.txt.encrypted",
+    "sha256": "578afaac10c9b29338af04fd40eb7091f8975397de67d264dbb394caf2288f82",
+    "reasons": [],
+    "staged_ts": 1766948445,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948506_ransomware_model.pkl.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\ransomware_model.pkl.encrypted",
+    "quarantine_name": "1766948506_ransomware_model.pkl.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948506_ransomware_model.pkl.encrypted",
+    "sha256": "d79f00bad93563839b1d00af3df03f55cdd883c0c4a9202e8bbf1aae497f705d",
+    "reasons": [],
+    "staged_ts": 1766948506,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948531_scan_results.db.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\scan_results.db.txt.encrypted",
+    "quarantine_name": "1766948531_scan_results.db.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948531_scan_results.db.txt.encrypted",
+    "sha256": "24bf7d66d3308995149d913ec011eb51de3afa567e7ae8495ad6499eb2d39c29",
+    "reasons": [],
+    "staged_ts": 1766948531,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948536_script.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\allproj\\script.txt.encrypted",
+    "quarantine_name": "1766948536_script.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948536_script.txt.encrypted",
+    "sha256": "6d5a13099bbcb105d285f66c802a3f70334bc42458e3dfe8700224c2f952acdb",
+    "reasons": [],
+    "staged_ts": 1766948536,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948723_6.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\6.docx.encrypted",
+    "quarantine_name": "1766948723_6.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948723_6.docx.encrypted",
+    "sha256": "e3eb363b0c40c1ee7c88878fd11e0d2ab05ac71036b0ad939ed651f39aa10391",
+    "reasons": [
+      "high_entropy:7.97"
+    ],
+    "staged_ts": 1766948724,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948726_ankara11 - Copy.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\ankara11 - Copy.docx.encrypted",
+    "quarantine_name": "1766948726_ankara11 - Copy.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948726_ankara11 - Copy.docx.encrypted",
+    "sha256": "8849093ee467888c23df5a1e9faf3ae109b5bead3c39ac3e7bb3685fc07069a4",
+    "reasons": [
+      "high_entropy:7.79"
+    ],
+    "staged_ts": 1766948727,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948767_code.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\code.docx.encrypted",
+    "quarantine_name": "1766948767_code.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948767_code.docx.encrypted",
+    "sha256": "27387781c811d0a5ec12be43eb07cf3818abdfcfbc6704410f397cd9f5af6b81",
+    "reasons": [
+      "high_entropy:7.25"
+    ],
+    "staged_ts": 1766948767,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948768_Complexity Summary.pdf.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Complexity Summary.pdf.encrypted",
+    "quarantine_name": "1766948768_Complexity Summary.pdf.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948768_Complexity Summary.pdf.encrypted",
+    "sha256": "1fada26feef930f6b08922af545d399b38d1c78f959ebe0d7f5256637a35f3a7",
+    "reasons": [
+      "high_entropy:7.98"
+    ],
+    "staged_ts": 1766948768,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948774_Downloads - Shortcut.lnk.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Downloads - Shortcut.lnk.encrypted",
+    "quarantine_name": "1766948774_Downloads - Shortcut.lnk.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948774_Downloads - Shortcut.lnk.encrypted",
+    "sha256": "56f55eb13e3f13c646fcd2d6a1ae6b4a737224c481dbfd7aacc60503bcdcb630",
+    "reasons": [],
+    "staged_ts": 1766948774,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948860_mohammad_CV.docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\mohammad_CV.docx.encrypted",
+    "quarantine_name": "1766948860_mohammad_CV.docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948860_mohammad_CV.docx.encrypted",
+    "sha256": "9b257416a45de8021fd379b7bb357e59e51211feb02d4e8d5624e4692a7c48ea",
+    "reasons": [
+      "high_entropy:7.60"
+    ],
+    "staged_ts": 1766948861,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948864_Mohammad_alwreikat_CV.pdf.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Mohammad_alwreikat_CV.pdf.encrypted",
+    "quarantine_name": "1766948864_Mohammad_alwreikat_CV.pdf.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948864_Mohammad_alwreikat_CV.pdf.encrypted",
+    "sha256": "b52c01764a792f881f874373f331557ef20c4f44105eba5fdb4753500f8d0234",
+    "reasons": [
+      "high_entropy:7.99"
+    ],
+    "staged_ts": 1766948864,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948868_Mohmmad Khier Al-Wreikat.pdf.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Mohmmad Khier Al-Wreikat.pdf.encrypted",
+    "quarantine_name": "1766948868_Mohmmad Khier Al-Wreikat.pdf.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948868_Mohmmad Khier Al-Wreikat.pdf.encrypted",
+    "sha256": "0f50e80e9b8ae72eeb896ffabefcb66b2c53d4d6b0ce6a8af028d1b8be030eb0",
+    "reasons": [],
+    "staged_ts": 1766948868,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  },
+  "1766948871_Network Security Assignment .docx.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\Network Security Assignment .docx.encrypted",
+    "quarantine_name": "1766948871_Network Security Assignment .docx.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948871_Network Security Assignment .docx.encrypted",
+    "sha256": "4f2ffa487d1eea051892e50cdd02e3aed41760f666913383cbe0d2529ee82527",
+    "reasons": [
+      "high_entropy:7.92"
+    ],
+    "staged_ts": 1766948871,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision"
+  },
+  "1766948875_New Text Document.txt.encrypted": {
+    "original_path": "C:\\Users\\Admin\\Desktop\\TEST\\New Text Document.txt.encrypted",
+    "quarantine_name": "1766948875_New Text Document.txt.encrypted",
+    "staged_path": "C:\\Users\\Admin\\Desktop\\run3\\current_project\\data\\quarantine\\_pending\\1766948875_New Text Document.txt.encrypted",
+    "sha256": "c789109628f71a4d1d8faaa77df865cd965bc888fbd449fc652b672f38801d6a",
+    "reasons": [],
+    "staged_ts": 1766948876,
+    "committed": false,
+    "commit_ts": null,
+    "final_path": null,
+    "restored": false,
+    "deleted": false,
+    "user_reason": "engine_decision_forced"
+  }
+}

@@ -1,0 +1,1695 @@
+# -*- coding: utf-8 -*-
+"""
+main.py — Full Integrated Ransomware Protection System (Windows-Only Edition)
+(optimized, extended, + YARA + ML + Anomaly + Quarantine + Backup)
+
+- لا حذف لأي ميزة أصلية. كل التغييرات هنا فقط لتوافق ويندوز.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import json
+import time
+import signal
+import platform
+import atexit
+from pathlib import Path
+from typing import Any, Dict, Optional, List
+from datetime import datetime
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from concurrent.futures import ThreadPoolExecutor
+
+# ---------------------------------------------------------------------
+# تحسين مستويات السجلات كما هو مطلوب في الدليل التقني
+# تقليل استهلاك الموارد وتحسين الأداء
+# ---------------------------------------------------------------------
+import logging
+# إعداد مستوى السجلات إلى WARNING لتقليل الضوضاء وتحسين الأداء
+logging.basicConfig(level=logging.WARNING)
+# يمكن تغييرها إلى INFO عند الحاجة للمتابعة أكثر
+# logging.basicConfig(level=logging.INFO)
+
+# ---------------------------------------------------------------------
+# ترتيب مسارات الاستيراد
+# ---------------------------------------------------------------------
+THIS_DIR = Path(__file__).parent.resolve()   # .../src
+PROJECT_DIR = THIS_DIR.parent                # project root
+
+# إعدادات المسارات النسبية
+BASE_DIR = PROJECT_DIR  # مشروع الجذر
+DATA_DIR = os.path.join(BASE_DIR, "data")
+DATABASE_DIR = os.path.join(DATA_DIR, "database")
+QUARANTINE_DIR = os.path.join(DATA_DIR, "quarantine")
+BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
+YARA_RULES_DIR = os.path.join(DATA_DIR, "YARA_RULES")
+
+# إنشاء المجلدات إذا لم تكن موجودة
+for directory in [DATA_DIR, DATABASE_DIR, QUARANTINE_DIR, BACKUPS_DIR, YARA_RULES_DIR]:
+    os.makedirs(directory, exist_ok=True)
+
+for p in (str(THIS_DIR), str(PROJECT_DIR)):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+# ---------------------------------------------------------------------
+# Imports + Shims
+# ---------------------------------------------------------------------
+from logger import get_logger
+log = get_logger(__name__)
+
+# utils
+from utils import now_iso, normalize_path, load_json, save_json, sizeof_fmt
+
+# File monitor (مطلوب)
+from file_monitor import RealTimeFileMonitor
+
+# event_handler (Shim عند الحاجة)
+try:
+    from event_handler import FileEventHandler
+except Exception:
+    class FileEventHandler:  # shim (لا تعطيل للميزة؛ مسار بديل آمن)
+        def __init__(self, backup_manager=None, quarantine_manager=None, config=None):
+            self.backup = backup_manager
+            self.quarantine = quarantine_manager
+            self.config = config or {}
+            self.ai = None
+        def handle_event(self, event: dict):
+            return {"decision": {"action": None}, "event": event}
+        def submit_event(self, event: dict):
+            return self.handle_event(event)
+
+# Database (اختياري)
+try:
+    from database_handler import DatabaseHandler
+except Exception:
+    DatabaseHandler = None
+    log.warning("DatabaseHandler not available. DB features will be disabled.")
+
+# YARA (اختياري)
+try:
+    from yara_scanner import YaraScanner
+except Exception:
+    YaraScanner = None
+    log.warning("YaraScanner not available. YARA features will be disabled.")
+
+# ML (اختياري)
+try:
+    from ml_detector import MLDetector
+except Exception:
+    MLDetector = None
+    log.warning("MLDetector not available. ML features will be disabled.")
+
+# Anomaly (اختياري)
+try:
+    from detector_anomaly import AnomalyDetector
+except Exception:
+    try:
+        from anomaly_detector import AnomalyDetector
+    except Exception:
+        AnomalyDetector = None
+        log.warning("AnomalyDetector not available. Anomaly features will be disabled.")
+
+# Quarantine (واجهة عليا)
+try:
+    from ransomware_response import RansomwareResponse
+except Exception:
+    RansomwareResponse = None
+    log.warning("RansomwareResponse not available. Quarantine REST will be limited.")
+
+# Backup (مدير + واجهة REST)
+BackupManager = None
+BackupFacade = None
+try:
+    from backup_manager import BackupManager as _BM, BackupFacade as _BF
+    BackupManager, BackupFacade = _BM, _BF
+except Exception:
+    log.warning("BackupManager/Facade not available. Backup REST will be limited.")
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def deep_merge(dst: dict, src: dict) -> dict:
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            dst[k] = deep_merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+
+def validate_config(cfg: dict) -> dict:
+    # web
+    if "web_interface" in cfg:
+        port = cfg["web_interface"].get("port", 5000)
+        if not isinstance(port, int) or not (1024 <= port <= 65535):
+            cfg["web_interface"]["port"] = 5000
+        cfg["web_interface"]["debug"] = False
+
+    # backup
+    bkp = cfg.setdefault("backup", {})
+    bkp.setdefault("mode", "both")
+    # Windows: مسار افتراضي آمن ضمن ProgramData
+    default_backups = str((SystemPaths.windows_data_root() / "backups").resolve())
+    bkp.setdefault("local_path", default_backups)
+
+    # quarantine
+    qcfg = cfg.setdefault("quarantine", {})
+    default_quarantine = str((SystemPaths.windows_data_root() / "quarantine").resolve())
+    qcfg.setdefault("path", default_quarantine)
+    qcfg.setdefault("max_workers", 4)
+
+    # database
+    dbc = cfg.setdefault("database", {})
+    default_db_dir = SystemPaths.windows_data_root() / "database"
+    dbc.setdefault("path", str((default_db_dir / "app.db").resolve()))
+    dbc.setdefault("pragmas_profile", "performance")
+    dbc.setdefault("batch_commit_count", 50)
+    dbc.setdefault("batch_commit_interval", 2.0)
+    dbc.setdefault("retry_attempts", 5)
+    dbc.setdefault("recovery_file", str((default_db_dir / "_db_failed_writes.json").resolve()))
+
+    # yara
+    ycfg = cfg.setdefault("yara", {})
+    default_rules = str((SystemPaths.windows_data_root() / "YARA_RULES").resolve())
+    ycfg.setdefault("rules_dir", default_rules)
+    ycfg.setdefault("pre_scan_in_main", True)
+
+    # ml
+    mcfg = cfg.setdefault("ml", {})
+    mcfg.setdefault("enabled", True)
+    default_models = str((SystemPaths.windows_data_root() / "AI_MODELS").resolve())
+    mcfg.setdefault("models_dir", default_models)
+    mcfg.setdefault("threshold", 0.7)
+    mcfg.setdefault("fast_threshold", 0.5)
+    mcfg.setdefault("deep_enabled", True)
+    mcfg.setdefault("max_fast_file_mb", 200)
+    mcfg.setdefault("verbose", False)
+
+    # anomaly
+    acfg = cfg.setdefault("anomaly", {})
+    acfg.setdefault("enabled", True)
+    acfg.setdefault("window_seconds", 60)
+    acfg.setdefault("rate_threshold", 20)
+    acfg.setdefault("threshold", 0.65)
+    acfg.setdefault("entropy_jump", 0.4)
+    acfg.setdefault("entropy_bytes", 65536)
+    acfg.setdefault("max_cache", 20000)
+    acfg.setdefault("model", "iforest")
+    acfg.setdefault("contamination", 0.02)
+    acfg.setdefault("model_path", str((SystemPaths.windows_data_root() / "AI_MODELS" / "anomaly_iforest.pkl").resolve()))
+    acfg.setdefault("baseline_cap", 600)
+    acfg.setdefault("weights", {
+        "rate": 0.30,
+        "ext_change": 0.25,
+        "suspicious_ext": 0.15,
+        "entropy_delta": 0.20,
+        "name_random": 0.10
+    })
+
+    # executor + token
+    cfg.setdefault("executor", {"max_workers": 8})
+    cfg.setdefault("api_token", None)
+    return cfg
+
+# ---------------------------------------------------------------------
+# Paths (Windows-only defaults)
+# ---------------------------------------------------------------------
+class SystemPaths:
+    @staticmethod
+    def _get_data_root() -> Path:
+        # استخدام مجلد البيانات المحلي في المشروع بدلاً من ProgramData
+        return Path(BASE_DIR) / "data"
+
+    @staticmethod
+    def _get_user_log_root() -> Path:
+        # استخدام مجلد logs محلي
+        return Path(BASE_DIR) / "data" / "logs"
+
+    @staticmethod
+    def windows_data_root() -> Path:
+        # Kept for backward compatibility in config loading
+        return SystemPaths._get_data_root()
+
+    @staticmethod
+    def windows_user_log_root() -> Path:
+        # Kept for backward compatibility in config loading
+        return SystemPaths._get_user_log_root()
+
+    def __init__(self):
+        # نُبقي project/src للثبات لكن نجعل بيانات التشغيل تحت ProgramData
+        self.project_dir = PROJECT_DIR
+        self.src_dir = THIS_DIR
+
+        self.data_root = self._get_data_root()
+        self.config_file = self.src_dir / "config.json"  # يبقى بجانب السورس (كما في الأصل)
+
+        self.database_dir = self.data_root / "database"
+        self.backup_dir = self.data_root / "backups"
+        self.quarantine_dir = self.data_root / "quarantine"
+        self.rules_dir = self.data_root / "YARA_RULES"
+        self.models_dir = self.data_root / "AI_MODELS"
+        self.logs_dir = self._get_user_log_root()
+        self.static_dir = self.src_dir / "static"
+
+        for d in (self.data_root, self.database_dir, self.backup_dir, self.quarantine_dir, self.rules_dir, self.models_dir, self.logs_dir):
+            d.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------
+# Main System
+# ---------------------------------------------------------------------
+class IntegratedRansomwareProtectionSystem:
+    def __init__(self):
+        # enforce Windows runtime
+        # Remove Windows-only warning after fixing paths
+        # if platform.system().lower() != "windows":
+        #     log.warning("This build is Windows-only. Continuing, but defaults are Windows oriented.")
+
+        self.paths = SystemPaths()
+        self.config = self._load_config()
+        self.api_token = self.config.get("api_token")
+
+        # Runtime state
+        # Initialize state based on file monitor status (will be set after file_monitor is created)
+        self.system_running = False
+        self.system_paused = False
+        self.file_monitor = None  # Will be initialized later
+        self.stats = {
+            "start_time": time.time(),
+            "started_at": now_iso(),
+            "total_scans": 0,
+            "infected_files": 0,
+            "safe_files": 0,
+            "anomalies_detected": 0
+        }
+
+        # Backup manager + facade
+        self.backup_manager = None
+        self.backup_facade = None
+        if BackupManager:
+            try:
+                self.backup_manager = BackupManager(
+                    mode=self.config.get("backup", {}).get("mode", "both"),
+                    local_backup_dir=self.config.get("backup", {}).get("local_path", str(self.paths.backup_dir))
+                )
+                if BackupFacade:
+                    self.backup_facade = BackupFacade(self.backup_manager)
+            except Exception:
+                log.exception("Failed to init BackupManager")
+
+        # Quarantine
+        self.response: Optional[RansomwareResponse] = None
+        self.quarantine_manager = None
+        if RansomwareResponse:
+            try:
+                self.response = RansomwareResponse(
+                    quarantine_dir=self.config.get("quarantine", {}).get("path", str(self.paths.quarantine_dir)),
+                    max_workers=int(self.config.get("quarantine", {}).get("max_workers", 4))
+                )
+                self.quarantine_manager = getattr(self.response, "qm", None)
+                log.info("RansomwareResponse initialized.")
+            except Exception:
+                log.exception("Failed to initialize RansomwareResponse")
+                self.response = None
+
+        # Event handler
+        self.event_handler = FileEventHandler(
+            backup_manager=self.backup_manager,
+            quarantine_manager=self.quarantine_manager,
+            config=self.config
+        )
+
+        # Database (اختياري)
+        self.db: Optional[DatabaseHandler] = None
+        if DatabaseHandler:
+            try:
+                dbc = self.config.get("database", {})
+                # استخدام مسار نسبي بدلاً من None أو مسار مطلق
+                db_path = dbc.get("path") or os.path.join(DATABASE_DIR, "app.db")
+                self.db = DatabaseHandler(
+                    db_path=db_path,
+                    pragmas_profile=dbc.get("pragmas_profile", "performance"),
+                    batch_commit_count=int(dbc.get("batch_commit_count", 50)),
+                    batch_commit_interval=float(dbc.get("batch_commit_interval", 2.0)),
+                    retry_attempts=int(dbc.get("retry_attempts", 5)),
+                    recovery_file=dbc.get("recovery_file") or os.path.join(DATABASE_DIR, "db_recovery.log")
+                )
+                self._init_db_schema()
+                try:
+                    self.db.recover_failed_writes()
+                except Exception:
+                    log.exception("DB recovery on startup failed")
+            except Exception:
+                log.exception("Failed initializing DatabaseHandler")
+                self.db = None
+
+        # YARA
+        self.yara_scanner: Optional[YaraScanner] = None
+        self._ensure_yara_scanner()
+
+        # ML
+        self.ml: Optional[MLDetector] = None
+        self._ensure_ml_detector()
+
+        # Anomaly
+        self.anomaly: Optional[AnomalyDetector] = None
+        try:
+            if AnomalyDetector:
+                acfg = dict(self.config.get("anomaly", {}))
+                acfg["monitoring"] = {
+                    "suspicious_extensions": self.config.get("monitoring", {}).get("suspicious_extensions", [])
+                }
+                self.anomaly = AnomalyDetector(acfg)
+                log.info("AnomalyDetector initialized.")
+        except Exception:
+            log.exception("Failed to initialize AnomalyDetector")
+            self.anomaly = None
+
+        # inject ML into event_handler if available
+        try:
+            if self.event_handler and self.ml:
+                self.event_handler.ai = self.ml
+        except Exception:
+            log.exception("Failed to inject MLDetector into event_handler")
+
+        # Inject self log and system files exclusion into monitoring config
+        try:
+            import logging
+            log_file = None
+            handlers = []
+            try:
+                handlers.extend(list(logging.getLogger().handlers))
+            except Exception:
+                pass
+            try:
+                if hasattr(log, "handlers"):
+                    handlers.extend(list(log.handlers))
+            except Exception:
+                pass
+            for h in handlers:
+                try:
+                    bf = getattr(h, "baseFilename", None)
+                    if bf:
+                        log_file = bf
+                        break
+                except Exception:
+                    continue
+            
+            mon = self.config.setdefault("monitoring", {})
+            ex = mon.setdefault("exclude_patterns", [])
+            
+            # Add common system patterns to exclude
+            system_patterns = [
+                "enhanced_system.log",
+                "__pycache__",
+                "*.pyc", "*.pyo", "*.pyd",
+                "*.db", "*.db-wal", "*.db-shm",
+                ".git", ".svn", ".hg",
+                "venv", ".venv", "env", ".env",
+                "node_modules", ".npm", ".yarn",
+                ".cache", ".config",
+                "*.tmp", "*.swp", "*.bak",
+                ".DS_Store", "Thumbs.db"
+            ]
+            
+            # Add log file if found
+            if log_file:
+                ex.append(log_file)
+                log.info("Injected self-log into monitoring.exclude_patterns: %s", log_file)
+            
+            # Add system patterns
+            for pattern in system_patterns:
+                if pattern not in ex:
+                    ex.append(pattern)
+            
+            log.info("Added system exclusion patterns to monitoring: %d patterns", len(ex))
+        except Exception:
+            log.exception("Failed to inject self-log exclusion")
+
+        # File monitor DB path تحت ProgramData
+        filemon_db = self.paths.database_dir / "file_monitor.db"
+        self.file_monitor = RealTimeFileMonitor(
+            str(filemon_db),
+            change_callback=self._on_file_change,
+            config=self.config
+        )
+
+        # Thread pool
+        max_workers = int(self.config.get("executor", {}).get("max_workers", 8))
+        self.event_pool = ThreadPoolExecutor(max_workers=max_workers)
+
+        # Flask app + CORS + Routes
+        self.app = Flask(__name__, static_folder=str(self.paths.static_dir), static_url_path="/")
+        CORS(self.app)
+        
+        # Cache for monitoring data (كما هو مطلوب في الدليل التقني)
+        self.monitoring_paths_cache = None
+        self.last_monitoring_paths_load = 0
+        self.monitoring_cache_ttl = 30  # 30 ثانية لـ TTL
+        self.CACHE_TTL = 30
+        
+        self.important_files_cache = None
+        self.last_important_files_load = 0
+        self.important_files_ttl = 30  # 30 ثانية لـ TTL
+        
+        self._setup_routes()
+
+    # ------------------ DB schema ------------------
+    def _init_db_schema(self):
+        if not self.db:
+            return
+        try:
+            self.db._execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts INTEGER NOT NULL,
+                    iso TEXT NOT NULL,
+                    path TEXT,
+                    event TEXT,
+                    status TEXT,
+                    decision TEXT,
+                    priority TEXT,
+                    size INTEGER,
+                    meta TEXT
+                )
+                """,
+                commit=True
+            )
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_events_path ON events(path)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_events_decision ON events(decision)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_events_status ON events(status)", commit=True)
+            
+            # إضافة جداول جديدة مطلوبة
+            self.db._execute(
+                """
+                CREATE TABLE IF NOT EXISTS monitored_paths (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL,
+                    added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    active INTEGER DEFAULT 1
+                )
+                """,
+                commit=True
+            )
+            
+            self.db._execute(
+                """
+                CREATE TABLE IF NOT EXISTS file_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT NOT NULL,
+                    operation_type TEXT NOT NULL,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    threat_score REAL DEFAULT 0.0,
+                    metadata TEXT
+                )
+                """,
+                commit=True
+            )
+            
+            self.db._execute(
+                """
+                CREATE TABLE IF NOT EXISTS alerts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    severity TEXT DEFAULT 'medium',
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'active',
+                    data TEXT
+                )
+                """,
+                commit=True
+            )
+            
+            # إضافة الفهارس
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_monitored_paths ON monitored_paths(path)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_file_events_path ON file_events(path)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_file_events_timestamp ON file_events(timestamp)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status)", commit=True)
+            self.db._execute("CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity)", commit=True)
+        except Exception:
+            log.exception("Failed to initialize DB schema")
+
+    # ------------------ YARA helper ------------------
+    def _ensure_yara_scanner(self):
+        ycfg = self.config.get("yara", {}) or {}
+        rules_dir = ycfg.get("rules_dir") or YARA_RULES_DIR
+        if not YaraScanner or not rules_dir:
+            self.yara_scanner = None
+            return
+        try:
+            if self.yara_scanner is None or str(self.yara_scanner.rules_dir) != normalize_path(rules_dir):
+                self.yara_scanner = YaraScanner(rules_dir=rules_dir)
+            else:
+                if hasattr(self.yara_scanner, "reload_if_changed"):
+                    self.yara_scanner.reload_if_changed()
+                else:
+                    self.yara_scanner.load_rules()
+        except Exception:
+            log.exception("Failed to initialize/refresh YaraScanner")
+        finally:
+            if not hasattr(self, "yara_scanner") or self.yara_scanner is None:
+                self.yara_scanner = None
+
+    # ------------------ ML helper ------------------
+    def _ensure_ml_detector(self):
+        mcfg = self.config.get("ml", {}) or {}
+        if not MLDetector or not bool(mcfg.get("enabled", True)):
+            self.ml = None
+            return
+        try:
+            self.ml = MLDetector(
+                models_dir=mcfg.get("models_dir", str(self.paths.models_dir)),
+                threshold=float(mcfg.get("threshold", 0.7)),
+                fast_threshold=float(mcfg.get("fast_threshold", 0.5)),
+                deep_enabled=bool(mcfg.get("deep_enabled", True)),
+                max_fast_file_mb=int(mcfg.get("max_fast_file_mb", 200)),
+                verbose=bool(mcfg.get("verbose", False))
+            )
+            log.info("MLDetector initialized.")
+        except Exception:
+            log.exception("Failed to initialize MLDetector")
+            self.ml = None
+
+    # ------------------ Config ------------------
+    def _load_config(self) -> Dict[str, Any]:
+        # افتراضات ويندوز فقط (بدون حذف مزايا)
+        default = {
+            "web_interface": {"host": "0.0.0.0", "port": 5000, "debug": False},
+            "backup": {"mode": "both", "local_path": BACKUPS_DIR},
+            "quarantine": {"path": QUARANTINE_DIR, "max_workers": 4},
+            "executor": {"max_workers": 8},
+            "monitoring": {
+                # مسارات افتراضية مناسبة لويندوز (قابلة للتعديل من الواجهة)
+                "protected_folders": [
+                    str(Path.home()),                                      # C:\Users\Username
+                    str(Path.home() / "Desktop"),
+                    str(Path.home() / "Documents"),
+                    str(Path.home() / "Downloads")
+                ],
+                "important_files": [],
+                "important_rescan_interval_seconds": 1800
+            },
+            "database": {
+                "path": os.path.join(DATABASE_DIR, "app.db"),
+                "pragmas_profile": "performance",
+                "batch_commit_count": 50,
+                "batch_commit_interval": 2.0,
+                "retry_attempts": 5,
+                "recovery_file": os.path.join(DATABASE_DIR, "_db_failed_writes.json")
+            },
+            "yara": {
+                "rules_dir": YARA_RULES_DIR,
+                "pre_scan_in_main": True
+            },
+            "ml": {
+                "enabled": True,
+                "models_dir": os.path.join(DATA_DIR, "AI_MODELS"),
+                "threshold": 0.7,
+                "fast_threshold": 0.5,
+                "deep_enabled": True,
+                "max_fast_file_mb": 200,
+                "verbose": False
+            },
+            "anomaly": {},
+            "api_token": None
+        }
+        user = load_json(str(THIS_DIR / "config.json"), default=None)  # نُبقي مكان الملف كما هو
+        if user:
+            default = deep_merge(default, user)
+        return validate_config(default)
+
+    def _save_config(self) -> bool:
+        return save_json(str(THIS_DIR / "config.json"), self.config, atomic=True)
+
+    # ------------------ Token guard ------------------
+    def _setup_auth_guard(self):
+        @self.app.before_request
+        def _auth_guard():
+            if self.api_token and request.path.startswith("/api/"):
+                token = request.headers.get("X-API-KEY")
+                if token != self.api_token:
+                    return jsonify({"error": "Unauthorized"}), 401
+
+    # ------------------ Event handling ------------------
+    def _on_file_change(self, event: dict):
+        try:
+            self.event_pool.submit(self._process_event, event)
+        except Exception:
+            log.exception("Failed submitting event")
+
+    def _process_event(self, event: dict):
+        try:
+            fpath = event.get("file_path") or event.get("path")
+
+            # YARA pre-scan (اختياري)
+            ycfg = self.config.get("yara", {}) or {}
+            if bool(ycfg.get("pre_scan_in_main", True)) and self.yara_scanner and fpath:
+                try:
+                    if hasattr(self.yara_scanner, "reload_if_changed"):
+                        self.yara_scanner.reload_if_changed()
+                    yres = self.yara_scanner.scan_file(fpath)
+                    event["yara"] = yres
+                    if yres.get("infected"):
+                        event["priority"] = event.get("priority") or "critical"
+                except Exception:
+                    log.exception("Pre YARA scan failed")
+
+            # ML pre-detect (اختياري)
+            mcfg = self.config.get("ml", {}) or {}
+            if bool(mcfg.get("enabled", True)) and self.ml and fpath:
+                try:
+                    ml_res = self.ml.detect_file(fpath)
+                    event["ml"] = ml_res
+                    if ml_res.get("infected"):
+                        event["priority"] = event.get("priority") or "high"
+                except Exception:
+                    log.exception("Pre ML detection failed")
+
+            # Anomaly pre-analysis (اختياري)
+            if self.anomaly and fpath:
+                try:
+                    ares = self.anomaly.analyze_event(event)
+                    event["anomaly"] = ares
+                    if ares.get("anomalous"):
+                        self.stats["anomalies_detected"] += 1
+                        event["priority"] = event.get("priority") or "high"
+                except Exception:
+                    log.exception("Anomaly analysis failed")
+
+            # القرار النهائي
+            res = self.event_handler.handle_event(event)
+            decision = (res or {}).get("decision", {}) or {}
+            action = decision.get("action")  # quarantine / backup / None
+
+            # إحصائيات عامة
+            self.stats["total_scans"] += 1
+            if action == "quarantine":
+                self.stats["infected_files"] += 1
+            else:
+                self.stats["safe_files"] += 1
+
+            # تخزين DB
+            if self.db:
+                try:
+                    integrity = event.get("integrity", {}) or {}
+                    status = integrity.get("status")
+                    priority = event.get("priority")
+                    size = None
+                    nh = integrity.get("new_hashes") or {}
+                    if isinstance(nh.get("size"), (int, float, str)):
+                        try:
+                            size = int(nh.get("size"))
+                        except Exception:
+                            size = None
+                    if size is None and fpath:
+                        try:
+                            size = os.path.getsize(fpath)
+                        except Exception:
+                            size = None
+                    meta_obj = {"event": event, "decision": decision}
+                    meta_txt = json.dumps(meta_obj, ensure_ascii=False)[:65535]
+                    row = {
+                        "ts": int(time.time()),
+                        "iso": now_iso(),
+                        "path": fpath,
+                        "event": event.get("event"),
+                        "status": status,
+                        "decision": action,
+                        "priority": priority,
+                        "size": size,
+                        "meta": meta_txt
+                    }
+                    self.db.insert_or_replace("events", row, queue=True)
+                except Exception:
+                    log.exception("Persist event failed")
+        except Exception:
+            log.exception("Error processing event")
+
+    # ------------------ Routes ------------------
+    def _setup_routes(self):
+        app = self.app
+        self._setup_auth_guard()
+
+        # Frontend
+        @app.route("/")
+        def _index():
+            return app.send_static_file("index.html")
+
+        # ---- System control ----
+        @app.route("/api/health")
+        def api_health():
+            return jsonify({
+                "running": self.system_running,
+                "paused": self.system_paused,
+                "yara": bool(self.yara_scanner is not None),
+                "ml": bool(self.ml is not None and self.config.get("ml", {}).get("enabled", True)),
+                "quarantine": bool(self.response is not None),
+                "anomaly": bool(self.anomaly is not None)
+            })
+
+        @app.route("/api/system/resources")
+        def api_system_resources():
+            """نقطة نهاية لمراقبة استهلاك موارد النظام - CPU، RAM، Disk"""
+            import psutil
+            try:
+                # CPU usage
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                cpu_count = psutil.cpu_count()
+                
+                # Memory usage
+                memory = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+                
+                return jsonify({
+                    "success": True,
+                    "cpu": {
+                        "percent": cpu_percent,
+                        "count": cpu_count,
+                        "frequency": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None
+                    },
+                    "memory": {
+                        "total": memory.total,
+                        "available": memory.available,
+                        "used": memory.used,
+                        "percent": memory.percent
+                    },
+                    "disk": {
+                        "total": disk.total,
+                        "used": disk.used,
+                        "free": disk.free,
+                        "percent": (disk.used / disk.total) * 100
+                    },
+                    "boot_time": psutil.boot_time(),
+                    "process_count": len(psutil.pids())
+                })
+            except Exception as e:
+                log.error(f"Error getting system resources: {e}")
+                return jsonify({"success": False, "error": str(e)})
+
+        @app.route("/api/start", methods=["POST"])
+        def api_start():
+            return jsonify({"success": self.start_monitoring()})
+
+        @app.route("/api/stop", methods=["POST"])
+        def api_stop():
+            return jsonify({"success": self.stop_monitoring()})
+
+        @app.route("/api/pause", methods=["POST"])
+        def api_pause():
+            return jsonify({"success": self.pause_monitoring()})
+        
+        @app.route("/api/resume", methods=["POST"])
+        def api_resume():
+            return jsonify({"success": self.resume_monitoring()})
+
+        # ---- Stats ----
+        @app.route("/api/stats")
+        def api_stats():
+            data = dict(self.stats)
+            quarantined_count = 0
+            try:
+                if self.response and hasattr(self.response, "stats"):
+                    qs = self.response.stats() or {}
+                    quarantined_count = int(qs.get("quarantined", 0))
+            except Exception:
+                pass
+            data["quarantined"] = quarantined_count
+            return jsonify({"success": True, "data": data})
+
+        # ---- Config ----
+        @app.route("/api/config", methods=["GET"])
+        def api_get_config():
+            return jsonify({"config": self.config})
+
+        @app.route("/api/config", methods=["POST"])
+        def api_update_config():
+            data = request.get_json() or {}
+            self.config = validate_config(deep_merge(self.config, data))
+            saved = self._save_config()
+            try:
+                # تحديث file_monitor
+                mon = self.config.get("monitoring", {})
+                if "important_files" in mon:
+                    for p in mon.get("important_files") or []:
+                        self.file_monitor.add_important_file(p)
+
+                # تحديث YARA/ML
+                if "yara" in data:
+                    self._ensure_yara_scanner()
+                if "ml" in data:
+                    self._ensure_ml_detector()
+                    if self.event_handler:
+                        self.event_handler.ai = self.ml
+
+                # تحديث/إعادة تهيئة أنومالي
+                if "anomaly" in data:
+                    try:
+                        if AnomalyDetector:
+                            acfg = dict(self.config.get("anomaly", {}))
+                            acfg["monitoring"] = {
+                                "suspicious_extensions": self.config.get("monitoring", {}).get("suspicious_extensions", [])
+                            }
+                            self.anomaly = AnomalyDetector(acfg)
+                    except Exception:
+                        log.exception("Failed reinitializing AnomalyDetector after config update")
+
+                # تحديث مسار الحجر/عدد العمال
+                if "quarantine" in data and RansomwareResponse:
+                    try:
+                        if self.response:
+                            self.response.close()
+                        self.response = RansomwareResponse(
+                            quarantine_dir=self.config.get("quarantine", {}).get("path", str(self.paths.quarantine_dir)),
+                            max_workers=int(self.config.get("quarantine", {}).get("max_workers", 4))
+                        )
+                        self.quarantine_manager = getattr(self.response, "qm", None)
+                        if hasattr(self.event_handler, "quarantine"):
+                            self.event_handler.quarantine = self.quarantine_manager
+                    except Exception:
+                        log.exception("Failed reinitializing RansomwareResponse after config update")
+
+                # تحديث مسار النسخ الاحتياطي
+                if BackupManager and ("backup" in data):
+                    try:
+                        self.backup_manager = BackupManager(
+                            mode=self.config.get("backup", {}).get("mode", "both"),
+                            local_backup_dir=self.config.get("backup", {}).get("local_path", str(self.paths.backup_dir))
+                        )
+                        if BackupFacade:
+                            self.backup_facade = BackupFacade(self.backup_manager)
+                    except Exception:
+                        log.exception("Failed reinitializing BackupManager after config update")
+
+            except Exception:
+                log.exception("Failed applying settings (monitoring/yara/ml/quarantine/backup/anomaly)")
+            return jsonify({"success": saved, "config": self.config})
+
+        # ---- Monitoring paths ----
+        @app.route("/api/monitoring/list_paths")
+        def api_list_paths():
+            """قائمة المسارات المراقبة مع Cache لمدة 30 ثانية"""
+            import time
+            now = time.time()
+            
+            # Check cache
+            if (self.monitoring_paths_cache is not None and 
+                now - self.last_monitoring_paths_load < self.monitoring_cache_ttl):
+                return jsonify({"paths": self.monitoring_paths_cache, "cached": True})
+            
+            # Load from file monitor
+            try:
+                if hasattr(self.file_monitor, "observers"):
+                    paths = list(self.file_monitor.observers.keys())
+                else:
+                    paths = list(self.config.get("monitoring", {}).get("protected_folders", []))
+                
+                # Update cache
+                self.monitoring_paths_cache = paths
+                self.last_monitoring_paths_load = now
+                
+                return jsonify({"paths": paths, "cached": False})
+            except Exception as e:
+                log.error(f"Error loading monitoring paths: {e}")
+                return jsonify({"paths": [], "error": str(e)})
+
+        @app.route("/api/monitoring/add_path", methods=["POST"])
+        def api_add_path():
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            ok = self.file_monitor.add_monitor_path(normalize_path(path))
+            return jsonify({"success": ok})
+
+        @app.route("/api/monitoring/remove_path", methods=["POST"])
+        def api_remove_path():
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            if hasattr(self.file_monitor, "remove_monitor_path"):
+                ok = self.file_monitor.remove_monitor_path(normalize_path(path))
+            else:
+                ok = False
+            return jsonify({"success": ok})
+
+        @app.route("/api/monitoring/rescan_path", methods=["POST"])
+        def api_rescan_path():
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            count = self.file_monitor.initial_scan(paths=[normalize_path(path)])
+            try:
+                total = len(count)
+            except Exception:
+                total = 0
+            return jsonify({"success": True, "files_scanned": total})
+
+        # ---- Important files ----
+        @app.route("/api/monitoring/add_important_file", methods=["POST"])
+        def api_add_important_file():
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            norm = normalize_path(path)
+            ok = self.file_monitor.add_important_file(norm)
+            try:
+                mon = self.config.setdefault("monitoring", {})
+                lst = set(mon.get("important_files") or [])
+                lst.add(norm)
+                mon["important_files"] = sorted(lst)
+                self._save_config()
+            except Exception:
+                log.exception("Failed to persist important_files in config")
+            return jsonify({"success": ok})
+
+        @app.route("/api/monitoring/remove_important_file", methods=["DELETE", "POST"])
+        def api_remove_important_file():
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            norm = normalize_path(path)
+            ok = self.file_monitor.remove_important_file(norm)
+            try:
+                mon = self.config.setdefault("monitoring", {})
+                lst = set(mon.get("important_files") or [])
+                lst.discard(norm)
+                mon["important_files"] = sorted(lst)
+                self._save_config()
+            except Exception:
+                log.exception("Failed to persist important_files in config (remove)")
+            return jsonify({"success": ok})
+
+        @app.route("/api/monitoring/list_important_files")
+        def api_list_important_files():
+            """قائمة الملفات المهمة مع Cache لمدة 30 ثانية"""
+            import time
+            now = time.time()
+            
+            # Check cache
+            if (self.important_files_cache is not None and 
+                now - self.last_important_files_load < self.important_files_ttl):
+                return jsonify({"files": self.important_files_cache, "cached": True})
+            
+            try:
+                # Load from file monitor
+                files = self.file_monitor.list_important_files()
+                
+                # Update cache
+                self.important_files_cache = files
+                self.last_important_files_load = now
+                
+                return jsonify({"files": files, "cached": False})
+            except Exception as e:
+                log.error(f"Error loading important files: {e}")
+                return jsonify({"files": [], "error": str(e)})
+
+        # ---- Events (recent) ----
+        @app.route("/api/events/recent")
+        def api_events_recent():
+            if not self.db:
+                return jsonify({"success": False, "error": "DB disabled"}), 503
+
+            limit = min(int(request.args.get("limit", 100)), 1000)
+            path_prefix = request.args.get("path_prefix")
+            since_ts = request.args.get("since_ts")
+            decision = request.args.get("decision")
+            status = request.args.get("status")
+
+            where = []
+            params: List[Any] = []
+            if path_prefix:
+                where.append("path LIKE ?")
+                params.append(f"{path_prefix}%")
+            if since_ts:
+                try:
+                    where.append("ts > ?")
+                    params.append(int(since_ts))
+                except Exception:
+                    pass
+            if decision:
+                where.append("decision = ?")
+                params.append(decision)
+            if status:
+                where.append("status = ?")
+                params.append(status)
+
+            where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+            sql = f"""
+                SELECT id, ts, iso, path, event, status, decision, priority, size
+                FROM events
+                {where_sql}
+                ORDER BY ts DESC
+                LIMIT ?
+            """
+            params.append(limit)
+            try:
+                rows = self.db.fetchall(sql, params)
+                data = [dict(r) for r in rows]
+                for r in data:
+                    if r.get("size") is not None:
+                        try:
+                            r["size_h"] = sizeof_fmt(float(r["size"]))
+                        except Exception:
+                            pass
+                return jsonify({"success": True, "data": data})
+            except Exception:
+                log.exception("Failed fetching recent events")
+                return jsonify({"success": False}), 500
+
+        # ---- YARA REST ----
+        @app.route("/api/yara/status")
+        def api_yara_status():
+            ycfg = self.config.get("yara", {}) or {}
+            if not self.yara_scanner:
+                return jsonify({"enabled": False, "config": ycfg})
+            try:
+                st = self.yara_scanner.status() if hasattr(self.yara_scanner, "status") else {"enabled": True}
+            except Exception:
+                log.exception("YARA status failed")
+                st = {"enabled": False}
+            st["config"] = ycfg
+            return jsonify(st)
+
+        @app.route("/api/yara/reload", methods=["POST"])
+        def api_yara_reload():
+            if not self.yara_scanner:
+                return jsonify({"success": False, "error": "yara_scanner_disabled"}), 503
+            data = request.get_json(silent=True) or {}
+            forced = bool(data.get("forced"))
+            try:
+                if forced:
+                    ok = self.yara_scanner.load_rules()
+                else:
+                    ok = self.yara_scanner.reload_if_changed() if hasattr(self.yara_scanner, "reload_if_changed") else self.yara_scanner.load_rules()
+                return jsonify({"success": bool(ok)})
+            except Exception:
+                log.exception("YARA reload failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/yara/scan", methods=["POST"])
+        def api_yara_scan():
+            if not self.yara_scanner:
+                return jsonify({"success": False, "error": "yara_scanner_disabled"}), 503
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            try:
+                res = self.yara_scanner.scan_file(normalize_path(path))
+                return jsonify({"success": True, "result": res})
+            except Exception:
+                log.exception("YARA scan API failed")
+                return jsonify({"success": False}), 500
+
+        # ---- ML REST ----
+        @app.route("/api/ml/status")
+        def api_ml_status():
+            mcfg = self.config.get("ml", {}) or {}
+            if not (self.ml and mcfg.get("enabled", True)):
+                return jsonify({"enabled": False, "config": mcfg, "loaded": False})
+            try:
+                loaded = {
+                    "rf": bool(getattr(self.ml, "rf", None)),
+                    "svm": bool(getattr(self.ml, "svm", None)),
+                    "xgb": bool(getattr(self.ml, "xgb", None)),
+                    "cnn": bool(getattr(self.ml, "cnn", None)),
+                    "nn_scaler": bool(getattr(self.ml, "nn_scaler", None)),
+                    "svm_scaler": bool(getattr(self.ml, "svm_scaler", None))
+                }
+                return jsonify({"enabled": True, "config": mcfg, "loaded": loaded})
+            except Exception:
+                log.exception("ML status failed")
+                return jsonify({"enabled": False, "config": mcfg, "loaded": False}), 500
+
+        @app.route("/api/ml/reload", methods=["POST"])
+        def api_ml_reload():
+            mcfg = self.config.get("ml", {}) or {}
+            if not (self.ml and mcfg.get("enabled", True)):
+                return jsonify({"success": False, "error": "ml_disabled"}), 503
+            try:
+                if hasattr(self.ml, "reload"):
+                    st = self.ml.reload()
+                    return jsonify({"success": True, **(st if isinstance(st, dict) else {})})
+                if hasattr(self.ml, "reload_models"):
+                    self.ml.reload_models()
+                elif hasattr(self.ml, "_load_models"):
+                    self.ml._load_models()
+                return jsonify({"success": True})
+            except Exception:
+                log.exception("ML reload failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/reload_models", methods=["POST"])
+        def api_reload_models_compat():
+            return api_ml_reload()
+
+        @app.route("/api/ml/detect", methods=["POST"])
+        def api_ml_detect():
+            mcfg = self.config.get("ml", {}) or {}
+            if not (self.ml and mcfg.get("enabled", True)):
+                return jsonify({"success": False, "error": "ml_disabled"}), 503
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            try:
+                res = self.ml.detect_file(normalize_path(path))
+                return jsonify({"success": True, "result": res})
+            except Exception:
+                log.exception("ML detect API failed")
+                return jsonify({"success":False}), 500
+
+        @app.route("/api/ml/thresholds", methods=["GET", "POST"])
+        def api_ml_thresholds():
+            mcfg = self.config.get("ml", {}) or {}
+            if request.method == "GET":
+                return jsonify({
+                    "threshold": mcfg.get("threshold", 0.7),
+                    "fast_threshold": mcfg.get("fast_threshold", 0.5)
+                })
+            data = request.get_json() or {}
+            th = data.get("threshold")
+            fth = data.get("fast_threshold")
+            try:
+                if th is not None:
+                    mcfg["threshold"] = float(th)
+                if fth is not None:
+                    mcfg["fast_threshold"] = float(fth)
+                self.config["ml"] = mcfg
+                self._save_config()
+                if self.ml and hasattr(self.ml, "set_thresholds"):
+                    self.ml.set_thresholds(threshold=th, fast_threshold=fth)
+                return jsonify({"success": True, "ml": mcfg})
+            except Exception:
+                log.exception("Failed to update ML thresholds")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/ml/cache/clear", methods=["POST"])
+        def api_ml_cache_clear():
+            if not self.ml:
+                return jsonify({"success": False, "error": "ml_disabled"}), 503
+            try:
+                if hasattr(self.ml, "clear_cache"):
+                    self.ml.clear_cache()
+                return jsonify({"success": True})
+            except Exception:
+                log.exception("ML cache clear failed")
+                return jsonify({"success": False}), 500
+
+        # ---- Anomaly REST ----
+        @app.route("/api/anomaly/status")
+        def api_anomaly_status():
+            if not self.anomaly:
+                return jsonify({"enabled": False})
+            try:
+                return jsonify({"enabled": True, "status": self.anomaly.status()})
+            except Exception:
+                log.exception("anomaly status failed")
+                return jsonify({"enabled": False}), 500
+
+        @app.route("/api/anomaly/reload", methods=["POST"])
+        def api_anomaly_reload():
+            if not self.anomaly:
+                return jsonify({"success": False, "error": "anomaly_disabled"}), 503
+            try:
+                data = request.get_json(silent=True) or {}
+                st = self.anomaly.reload(data if data else None)
+                return jsonify({"success": True, "status": st})
+            except Exception:
+                log.exception("anomaly reload failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/anomaly/reset", methods=["POST"])
+        def api_anomaly_reset():
+            if not self.anomaly:
+                return jsonify({"success": False, "error": "anomaly_disabled"}), 503
+            try:
+                self.anomaly.reset_baseline()
+                return jsonify({"success": True})
+            except Exception:
+                log.exception("anomaly reset failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/anomaly/analyze", methods=["POST"])
+        def api_anomaly_analyze():
+            if not self.anomaly:
+                return jsonify({"success": False, "error": "anomaly_disabled"}), 503
+            data = request.get_json() or {}
+            path = data.get("path")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            try:
+                res = self.anomaly.analyze_event({"path": normalize_path(path), "event": "manual"})
+                return jsonify({"success": True, "result": res})
+            except Exception:
+                log.exception("anomaly analyze failed")
+                return jsonify({"success": False}), 500
+
+        # ---- Quarantine REST ----
+        @app.route("/api/quarantine/list")
+        def api_quarantine_list():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            try:
+                items = self.response.list_quarantine()
+                out = []
+                for m in items or []:
+                    qname = m.get("quarantine_name") or m.get("qname") or ""
+                    created_at = m.get("commit_ts") or m.get("staged_ts") or m.get("created_at")
+                    if isinstance(created_at, (int, float)):
+                        created_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(created_at)))
+                    out.append({
+                        "qname": qname,
+                        "file_path": m.get("original_path") or m.get("file_path"),
+                        "created_at": created_at
+                    })
+                return jsonify({"success": True, "data": out})
+            except Exception:
+                log.exception("quarantine list failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/quarantine/restore", methods=["POST"])
+        def api_quarantine_restore():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            data = request.get_json() or {}
+            qname = data.get("file_id") or data.get("qname")
+            dest = data.get("dest_path")
+            if not qname:
+                return jsonify({"success": False, "error": "file_id (qname) required"}), 400
+            try:
+                result = self.response.restore(qname, dest_path=dest)
+                return jsonify({"success": bool(result.get("ok")), "result": result})
+            except Exception:
+                log.exception("quarantine restore failed")
+                return jsonify({"success": False, "error": "restore failed"}), 500
+
+        @app.route("/api/quarantine/delete", methods=["DELETE", "POST"])
+        def api_quarantine_delete():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            data = request.get_json() or {}
+            qname = data.get("file_id") or data.get("qname")
+            if not qname:
+                return jsonify({"success": False, "error": "file_id (qname) required"}), 400
+            try:
+                result = self.response.delete(qname)
+                return jsonify({"success": bool(result.get("ok")), "result": result})
+            except Exception:
+                log.exception("quarantine delete failed")
+                return jsonify({"success": False, "error": "delete failed"}), 500
+
+        @app.route("/api/quarantine/isolate", methods=["POST"])
+        def api_quarantine_isolate():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            data = request.get_json() or {}
+            path = data.get("path")
+            reason = data.get("reason")
+            if not path:
+                return jsonify({"success": False, "error": "path required"}), 400
+            try:
+                result = self.response.isolate(normalize_path(path), reason=reason)
+                return jsonify({"success": bool(result.get("ok", True)), "result": result})
+            except Exception:
+                log.exception("quarantine isolate failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/quarantine/bulk", methods=["POST"])
+        def api_quarantine_bulk():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            data = request.get_json() or {}
+            paths = data.get("paths")
+            reason = data.get("reason")
+            if not paths or not isinstance(paths, list):
+                return jsonify({"success": False, "error": "paths (list) required"}), 400
+            try:
+                result = self.response.bulk_isolate([normalize_path(p) for p in paths], reason=reason)
+                return jsonify({"success": True, "result": result})
+            except Exception:
+                log.exception("bulk isolation failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/quarantine/stats")
+        def api_quarantine_stats():
+            if not self.response:
+                return jsonify({"success": False, "error": "quarantine_disabled"}), 503
+            try:
+                s = self.response.stats()
+                return jsonify({"success": True, "stats": s})
+            except Exception:
+                log.exception("quarantine stats failed")
+                return jsonify({"success": False}), 500
+
+        # ---- Backup REST ----
+        @app.route("/api/backup/status")
+        def api_backup_status():
+            if not self.backup_facade:
+                return jsonify({"success": False, "error": "backup_disabled"}), 503
+            try:
+                return jsonify(self.backup_facade.status())
+            except Exception:
+                log.exception("backup status failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/backup/list")
+        def api_backup_list():
+            if not self.backup_facade:
+                return jsonify({"success": False, "error": "backup_disabled"}), 503
+            try:
+                return jsonify(self.backup_facade.list_backups())
+            except Exception:
+                log.exception("backup list failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/backup/create", methods=["POST"])
+        def api_backup_create():
+            if not self.backup_facade:
+                return jsonify({"success": False, "error": "backup_disabled"}), 503
+            data = request.get_json() or {}
+            paths = data.get("paths")
+            if not paths or not isinstance(paths, list):
+                return jsonify({"success": False, "error": "paths (list) required"}), 400
+            try:
+                return jsonify(self.backup_facade.create([normalize_path(p) for p in paths]))
+            except Exception:
+                log.exception("backup create failed")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/backup/restore", methods=["POST"])
+        def api_backup_restore():
+            if not self.backup_facade:
+                if self.backup_manager and hasattr(self.backup_manager, "restore_backup"):
+                    data = request.get_json() or {}
+                    backup_id = data.get("backup_id")
+                    if not backup_id:
+                        return jsonify({"success": False, "error": "backup_id required"}), 400
+                    try:
+                        result = self.backup_manager.restore_backup(backup_id)
+                        return jsonify({"success": True, "result": result})
+                    except Exception:
+                        log.exception("restore_backup failed")
+                        return jsonify({"success": False, "error": "restore failed"}), 500
+                return jsonify({"success": False, "error": "backup_disabled"}), 503
+            data = request.get_json() or {}
+            backup_id = data.get("backup_id")
+            dest_path = data.get("dest_path")
+            if not backup_id:
+                return jsonify({"success": False, "error": "backup_id required"}), 400
+            try:
+                return jsonify(self.backup_facade.restore(backup_id, dest_path=dest_path))
+            except Exception:
+                log.exception("backup restore failed")
+                return jsonify({"success": False}), 500
+
+        # ---- Database: stats/batch/recover ----
+        @app.route("/api/db/stats")
+        def api_db_stats():
+            if not self.db:
+                return jsonify({"enabled": False})
+            dbc = self.config.get("database", {})
+            queued = self.db.queued_count()
+            return jsonify({
+                "enabled": True,
+                "path": dbc.get("path"),
+                "batch_count": int(dbc.get("batch_commit_count", 50)),
+                "batch_interval": float(dbc.get("batch_commit_interval", 2.0)),
+                "retry_attempts": int(dbc.get("retry_attempts", 5)),
+                "queued": queued,
+                "recovery_file": dbc.get("recovery_file")
+            })
+
+        @app.route("/api/db/batch_config", methods=["POST"])
+        def api_db_batch_config():
+            if not self.db:
+                return jsonify({"success": False, "error": "DB disabled"}), 503
+            data = request.get_json() or {}
+            count = data.get("count")
+            interval = data.get("interval")
+            try:
+                self.db.set_batch_config(count=count, interval=interval)
+                dbc = self.config.setdefault("database", {})
+                if count is not None:
+                    dbc["batch_commit_count"] = int(count)
+                if interval is not None:
+                    dbc["batch_commit_interval"] = float(interval)
+                self._save_config()
+                return jsonify({"success": True})
+            except Exception:
+                log.exception("Failed updating DB batch config")
+                return jsonify({"success": False}), 500
+
+        @app.route("/api/db/recover", methods=["POST"])
+        def api_db_recover():
+            if not self.db:
+                return jsonify({"success": False, "error": "DB disabled"}), 503
+            try:
+                ok = self.db.recover_failed_writes()
+                return jsonify({"success": True, "replayed": ok})
+            except Exception:
+                log.exception("DB recover failed")
+                return jsonify({"success": False}), 500
+
+        # ---- Frontend Integration Endpoints ----
+        @app.route("/api/timeline", methods=["GET"])
+        def api_timeline():
+            """Attack Timeline - returns recent security events for frontend"""
+            try:
+                timeline_data = []
+                
+                # Get recent events from database
+                if self.db:
+                    events = self.db.get_recent_events(limit=50)
+                    for event in events:
+                        timeline_data.append({
+                            "timestamp": event.get('timestamp', ''),
+                            "type": event.get('event_type', 'security'),
+                            "severity": event.get('severity', 'info'),
+                            "description": event.get('description', ''),
+                            "source": event.get('source', 'system'),
+                            "action_taken": event.get('action_taken', '')
+                        })
+                
+                # Add system status events
+                timeline_data.append({
+                    "timestamp": datetime.now().isoformat(),
+                    "type": "system_status",
+                    "severity": "info" if self.system_running and not self.system_paused else "warning",
+                    "description": "System running and monitoring" if self.system_running and not self.system_paused else "System paused or stopped",
+                    "source": "monitoring_system"
+                })
+                
+                return jsonify({"success": True, "timeline": timeline_data})
+            except Exception as e:
+                log.error(f"Error getting timeline data: {e}")
+                return jsonify({"success": False, "error": str(e)})
+
+        @app.route("/api/files", methods=["GET"])
+        def api_files():
+            """Files data - returns monitored files and their status"""
+            try:
+                files_data = {
+                    "monitored_paths": [],
+                    "quarantined_files": [],
+                    "backup_status": "unknown"
+                }
+                
+                # Get monitored paths
+                if self.db:
+                    paths = self.db.get_monitored_paths()
+                    files_data["monitored_paths"] = paths
+                
+                # Get quarantine status
+                if hasattr(self, 'quarantine_manager'):
+                    quarantine_list = self.quarantine_manager.get_quarantined_files()
+                    files_data["quarantined_files"] = quarantine_list[:20]  # Limit to 20
+                
+                # Get backup status
+                if hasattr(self, 'backup_manager'):
+                    backup_info = self.backup_manager.get_backup_status()
+                    files_data["backup_status"] = backup_info.get('status', 'unknown')
+                
+                return jsonify({"success": True, "data": files_data})
+            except Exception as e:
+                log.error(f"Error getting files data: {e}")
+                return jsonify({"success": False, "error": str(e)})
+
+        @app.route("/api/alerts", methods=["GET"])
+        def api_alerts():
+            """Alerts data - returns recent security alerts"""
+            try:
+                alerts_data = {
+                    "recent_alerts": [],
+                    "alert_count": 0,
+                    "high_priority": 0
+                }
+                
+                # Get recent alerts from events
+                if self.db:
+                    events = self.db.get_recent_events(limit=100)
+                    for event in events:
+                        if event.get('event_type') in ['security', 'alert', 'threat']:
+                            alert = {
+                                "id": event.get('id'),
+                                "timestamp": event.get('timestamp'),
+                                "severity": event.get('severity', 'info'),
+                                "title": event.get('description', 'Security Alert'),
+                                "description": event.get('details', ''),
+                                "source": event.get('source', 'system'),
+                                "status": "active"
+                            }
+                            alerts_data["recent_alerts"].append(alert)
+                            
+                            # Count by severity
+                            if event.get('severity') in ['high', 'critical']:
+                                alerts_data["high_priority"] += 1
+                    
+                    alerts_data["alert_count"] = len(alerts_data["recent_alerts"])
+                
+                return jsonify({"success": True, "data": alerts_data})
+            except Exception as e:
+                log.error(f"Error getting alerts data: {e}")
+                return jsonify({"success": False, "error": str(e)})
+
+        @app.route("/api/recovery", methods=["GET"])
+        def api_recovery():
+            """Recovery data - returns backup and recovery information"""
+            try:
+                recovery_data = {
+                    "backup_status": {},
+                    "recovery_points": [],
+                    "restore_history": []
+                }
+                
+                # Get backup status
+                if hasattr(self, 'backup_manager'):
+                    backup_info = self.backup_manager.get_backup_status()
+                    recovery_data["backup_status"] = backup_info
+                
+                # Get recovery points
+                if self.db:
+                    recovery_points = self.db.get_recovery_points()
+                    recovery_data["recovery_points"] = recovery_points[:10]  # Limit to 10
+                
+                # Get restore history
+                if self.db:
+                    restore_history = self.db.get_restore_history()
+                    recovery_data["restore_history"] = restore_history[:20]  # Limit to 20
+                
+                return jsonify({"success": True, "data": recovery_data})
+            except Exception as e:
+                log.error(f"Error getting recovery data: {e}")
+                return jsonify({"success": False, "error": str(e)})
+
+    # ------------------ Control ------------------
+    def start_monitoring(self):
+        if not self.system_running:
+            self.file_monitor.start_monitoring()
+            self.system_running = True
+            self.system_paused = False # Ensure paused is false when starting
+            log.info("Monitoring started")
+        return True
+
+    def stop_monitoring(self):
+        if self.system_running or self.system_paused:
+            self.file_monitor.stop_monitoring()
+            self.system_running = False
+            self.system_paused = False
+            log.info("Monitoring completely stopped")
+        return True
+
+    def pause_monitoring(self):
+        if self.system_running and not self.system_paused:
+            self.file_monitor.stop_monitoring()
+            self.system_paused = True
+            log.info("Monitoring paused (system still active)")
+        return True
+
+    def resume_monitoring(self):
+        if self.system_paused and self.system_running:
+            self.file_monitor.start_monitoring()
+            self.system_paused = False
+            log.info("Monitoring resumed")
+        return True
+
+    def run(self):
+        from waitress import serve
+        wi = self.config.get("web_interface", {})
+        host = wi.get("host", "0.0.0.0")
+        port = int(wi.get("port", 5000))
+        threads = int(wi.get("threads", 8))  # عدد الـ threads للنظام
+        
+        log.info(f"Starting production server with Waitress at http://{host}:{port}")
+        log.info(f"Configuration: threads={threads}, host={host}, port={port}")
+        
+        # استخدام Waitress سيرفر إنتاجي بدلاً من Flask dev server
+        serve(self.app, host=host, port=port, threads=threads)
+
+# -------------------------------------
+# Entrypoint (Windows-friendly shutdown)
+# -------------------------------------
+def main():
+    system = IntegratedRansomwareProtectionSystem()
+
+    def _shutdown():
+        log.info("Shutting down...")
+        try:
+            system.stop_monitoring()
+        except Exception:
+            pass
+        try:
+            if getattr(system, "response", None):
+                system.response.close()
+        except Exception:
+            log.exception("RansomwareResponse close failed")
+        try:
+            if getattr(system, "db", None):
+                system.db.close()
+        except Exception:
+            log.exception("DB close failed")
+        try:
+            if getattr(system, "event_pool", None):
+                system.event_pool.shutdown(wait=False)
+        except Exception:
+            pass
+
+    # سجل دالة الإغلاق عبر atexit لويندوز (بدون حذف دعم الإشارات)
+    atexit.register(_shutdown)
+
+    # SIGINT موجود؛ SIGTERM قد لا يكون فعّال على ويندوز في كل البيئات
+    signal.signal(signal.SIGINT, lambda sig, frame: (_shutdown(), sys.exit(0)))
+    if hasattr(signal, "SIGTERM"):
+        try:
+            signal.signal(signal.SIGTERM, lambda sig, frame: (_shutdown(), sys.exit(0)))
+        except Exception:
+            pass
+
+    system.run()
+
+# إنشاء مثيل واحد من التطبيق للاستخدام مع Waitress WSGI
+app_instance = None
+
+def get_app():
+    """
+    إنشاء وإرجاع مثيل التطبيق للاستخدام مع Waitress
+    """
+    global app_instance
+    if app_instance is None:
+        app_instance = IntegratedRansomwareProtectionSystem()
+    return app_instance.app
+
+# إنشاء مثيل التطبيق على مستوى الوحدة للاستخدام مع Waitress
+app = get_app()
+
+if __name__ == "__main__":
+    main()
